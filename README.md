@@ -24,7 +24,7 @@ A comprehensive after-hours maintenance escalation system that ingests service r
 ## 🚀 Features
 
 ### Core Capabilities
-- **Multi-channel Intake**: Email (Gmail/Microsoft 365 IMAP) and Dialpad voicemail/missed calls
+- **Multi-channel Intake**: Email (Gmail IMAP), Dialpad voicemail/missed calls
 - **AI-Powered Classification**: GPT-4o based emergency scoring with intelligent context extraction
 - **Smart Escalation**: Automated phone + SMS escalation with configurable ladder
 - **On-Call Rotation**: Weekly rotation management with primary/secondary contacts
@@ -90,7 +90,7 @@ A comprehensive after-hours maintenance escalation system that ingests service r
 | **AI Service** | FastAPI, Python 3.11, OpenAI GPT-4o |
 | **Queue** | Redis 7, BullMQ |
 | **Telephony** | Twilio (Voice + SMS), Dialpad (optional) |
-| **Email** | Gmail/Microsoft 365 IMAP/SMTP |
+| **Email** | Gmail IMAP/SMTP |
 | **Deployment** | Docker, Docker Compose, Nginx |
 
 ## 🛠️ Quick Start
@@ -246,7 +246,7 @@ TWILIO_AUTH_TOKEN=your-auth-token
 TWILIO_PHONE_NUMBER=+1234567890
 TWILIO_WEBHOOK_URL=https://your-domain.com/twilio
 
-# Email (Gmail)
+# Email (Gmail - REQUIRED)
 IMAP_HOST=imap.gmail.com
 IMAP_PORT=993
 IMAP_USER=your-email@gmail.com
@@ -401,31 +401,28 @@ EMAIL_FROM_NAME=After-Hours Escalation System
 
 > **Note**: Trial accounts can only call verified phone numbers. Upgrade to production for full functionality.
 
-### Gmail Setup
+### Gmail Setup (Primary Email Provider)
 
-1. Enable 2-Factor Authentication on your Google account
-2. Generate an App Password:
-   - Go to Google Account → Security → App Passwords
-   - Select "Mail" and your device
-   - Copy the generated password
-3. Configure IMAP/SMTP in `.env`:
+1. **Enable 2-Factor Authentication** on your Google account
+2. **Generate an App Password**:
+   - Go to [Google Account → Security → App Passwords](https://myaccount.google.com/apppasswords)
+   - Select "Mail" and "Windows Computer" (or your device type)
+   - Copy the generated 16-character password
+3. **Configure IMAP/SMTP** in `.env`:
 ```env
 IMAP_HOST=imap.gmail.com
 IMAP_PORT=993
 IMAP_USER=your-email@gmail.com
 IMAP_PASSWORD=your-16-char-app-password
-```
 
-### Microsoft 365 Setup
-
-1. Enable IMAP in Microsoft 365 admin
-2. Create an App Password if using MFA
-3. Configure:
-```env
-IMAP_HOST=outlook.office365.com
-IMAP_PORT=993
-SMTP_HOST=smtp-mail.outlook.com
+SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
+SMTP_USER=your-email@gmail.com
+SMTP_PASSWORD=your-16-char-app-password
+```
+4. **Test the connection** (optional):
+```bash
+openssl s_client -connect imap.gmail.com:993
 ```
 
 ### Dialpad Setup (Optional)
@@ -478,18 +475,25 @@ curl -I https://your-domain.com/twilio/voice
 
 ### Email Not Polling
 
-1. **Verify IMAP credentials**:
+1. **Verify Gmail App Password**:
+   - Must be 16 characters (no spaces)
+   - Generated from Account → Security → App Passwords
+   - 2FA must be enabled on the account
+
+2. **Test IMAP connection**:
 ```bash
-# Test connection
 openssl s_client -connect imap.gmail.com:993
 ```
 
-2. **Check app password** requirements for Gmail/365
-
-3. **Review logs**:
+3. **Check logs** for IMAP errors:
 ```bash
-docker logs escalation-ai-service
+docker logs escalation-ai-service | grep -i imap
 ```
+
+4. **Common issues**:
+   - Using regular password instead of app password
+   - 2FA not enabled
+   - "Allow less secure apps" setting (for older Gmail accounts)
 
 ### AI Classification Issues
 

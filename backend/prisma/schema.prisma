@@ -1,0 +1,322 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =====================================================
+// Enums
+// =====================================================
+
+enum UserRole {
+  admin
+  on_call
+  viewer
+
+  @@map("user_role")
+}
+
+enum EventSource {
+  email
+  dialpad
+
+  @@map("event_source")
+}
+
+enum EventStatus {
+  pending
+  escalated
+  acknowledged
+  downgraded
+  missed
+  closed
+
+  @@map("event_status")
+}
+
+enum ContactType {
+  primary
+  secondary
+  fixed
+
+  @@map("contact_type")
+}
+
+enum CallStatus {
+  not_called
+  ringing
+  answered
+  failed
+  no_answer
+  busy
+
+  @@map("call_status")
+}
+
+enum SmsStatus {
+  not_sent
+  sent
+  delivered
+  failed
+
+  @@map("sms_status")
+}
+
+enum AckMethod {
+  sms
+  call
+
+  @@map("ack_method")
+}
+
+enum AlertType {
+  email_ingestion_failure
+  dialpad_webhook_failure
+  call_failure
+  sms_failure
+  no_acknowledgment
+  system_health
+
+  @@map("alert_type")
+}
+
+// =====================================================
+// Core Models
+// =====================================================
+
+model User {
+  id           String   @id @default(uuid())
+  name         String   @db.VarChar(255)
+  email        String   @unique @db.VarChar(255)
+  passwordHash String?  @map("password_hash") @db.VarChar(255)
+  phoneNumber  String?  @map("phone_number") @db.VarChar(50)
+  role         UserRole @default(viewer)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  primaryRotations     OnCallRotation[]    @relation("PrimaryOnCall")
+  secondaryRotations   OnCallRotation[]    @relation("SecondaryOnCall")
+  escalationContacts   EscalationContact[]
+  escalationLogs       EscalationLog[]
+  acknowledgedEvents   Event[]             @relation("AcknowledgedBy")
+  acknowledgments      Acknowledgment[]
+  resolvedAlerts       AdminAlert[]        @relation("ResolvedBy")
+  updatedSettings      SystemSetting[]
+
+  @@map("users")
+}
+
+model OnCallRotation {
+  id              String   @id @default(uuid())
+  startDate       DateTime @map("start_date") @db.Date
+  endDate         DateTime @map("end_date") @db.Date
+  primaryUserId   String   @map("primary_user_id")
+  secondaryUserId String   @map("secondary_user_id")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  primaryUser   User @relation("PrimaryOnCall", fields: [primaryUserId], references: [id], onDelete: Cascade)
+  secondaryUser User @relation("SecondaryOnCall", fields: [secondaryUserId], references: [id], onDelete: Cascade)
+
+  @@map("on_call_rotations")
+}
+
+model EscalationContact {
+  id          String      @id @default(uuid())
+  userId      String      @map("user_id")
+  position    Int
+  contactType ContactType @map("contact_type")
+  isActive    Boolean     @default(true) @map("is_active")
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  escalationLogs EscalationLog[]
+
+  @@unique([userId, contactType])
+  @@map("escalation_contacts")
+}
+
+model Event {
+  id                       String      @id @default(uuid())
+  source                   EventSource
+  subject                  String?     @db.VarChar(500)
+  body                     String?
+  senderDomain             String?     @map("sender_domain") @db.VarChar(255)
+  senderEmail              String?     @map("sender_email") @db.VarChar(255)
+  senderPhone              String?     @map("sender_phone") @db.VarChar(50)
+  receivedAt               DateTime    @map("received_at") @db.Timestamptz(6)
+  emergencyScore           Decimal?    @map("emergency_score") @db.Decimal(5, 4)
+  extractedContext         Json?       @map("extracted_context")
+  status                   EventStatus @default(pending)
+  acknowledgedById         String?     @map("acknowledged_by")
+  acknowledgedAt           DateTime?   @map("acknowledged_at") @db.Timestamptz(6)
+  downgradeToNonEmergency  Boolean     @default(false) @map("downgraded_to_non_emergency")
+  escalationLadderSnapshot Json?       @map("escalation_ladder_snapshot")
+  voicemailTranscription   String?     @map("voicemail_transcription")
+  voicemailUrl             String?     @map("voicemail_url") @db.VarChar(500)
+  createdAt                DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  acknowledgedBy  User?           @relation("AcknowledgedBy", fields: [acknowledgedById], references: [id])
+  escalationLogs  EscalationLog[]
+  acknowledgments Acknowledgment[]
+  adminAlerts     AdminAlert[]
+
+  @@index([status])
+  @@index([receivedAt])
+  @@index([source])
+  @@map("events")
+}
+
+model EscalationLog {
+  id                    String     @id @default(uuid())
+  eventId               String     @map("event_id")
+  contactId             String     @map("contact_id")
+  userId                String     @map("user_id")
+  attemptNumber         Int        @map("attempt_number")
+  callSid               String?    @map("call_sid") @db.VarChar(100)
+  callStatus            CallStatus @default(not_called) @map("call_status")
+  smsSid                String?    @map("sms_sid") @db.VarChar(100)
+  smsStatus             SmsStatus  @default(not_sent) @map("sms_status")
+  acknowledgmentReceived Boolean   @default(false) @map("acknowledgment_received")
+  acknowledgedAt        DateTime?  @map("acknowledged_at") @db.Timestamptz(6)
+  errorMessage          String?    @map("error_message")
+  createdAt             DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // Relations
+  event   Event             @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  contact EscalationContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+  @@index([callSid])
+  @@map("escalation_logs")
+}
+
+model Acknowledgment {
+  id              String    @id @default(uuid())
+  eventId         String    @map("event_id")
+  userId          String    @map("user_id")
+  method          AckMethod
+  acknowledgedAt  DateTime  @map("acknowledged_at") @db.Timestamptz(6)
+  notes           String?
+  downgradeReason String?   @map("downgrade_reason")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // Relations
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+  @@map("acknowledgments")
+}
+
+model AdminAlert {
+  id         String    @id @default(uuid())
+  eventId    String?   @map("event_id")
+  alertType  AlertType @map("alert_type")
+  message    String
+  details    Json?
+  alertedAt  DateTime  @default(now()) @map("alerted_at") @db.Timestamptz(6)
+  resolved   Boolean   @default(false)
+  resolvedAt DateTime? @map("resolved_at") @db.Timestamptz(6)
+  resolvedById String? @map("resolved_by")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // Relations
+  event      Event? @relation(fields: [eventId], references: [id])
+  resolvedBy User?  @relation("ResolvedBy", fields: [resolvedById], references: [id])
+
+  @@index([resolved])
+  @@index([alertType])
+  @@map("admin_alerts")
+}
+
+// =====================================================
+// Configuration Models
+// =====================================================
+
+model SystemSetting {
+  id          String   @id @default(uuid())
+  key         String   @unique @db.VarChar(100)
+  value       String
+  description String?
+  updatedById String?  @map("updated_by")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  updatedBy User? @relation(fields: [updatedById], references: [id])
+
+  @@map("system_settings")
+}
+
+model EmergencyKeyword {
+  id         String   @id @default(uuid())
+  keyword    String   @db.VarChar(100)
+  weight     Decimal  @default(1.00) @db.Decimal(3, 2)
+  category   String?  @db.VarChar(100)
+  isNegative Boolean  @default(false) @map("is_negative")
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("emergency_keywords")
+}
+
+// =====================================================
+// Metrics Models
+// =====================================================
+
+model DailyMetric {
+  id                     String   @id @default(uuid())
+  date                   DateTime @unique @db.Date
+  totalEvents            Int      @default(0) @map("total_events")
+  emailEvents            Int      @default(0) @map("email_events")
+  dialpadEvents          Int      @default(0) @map("dialpad_events")
+  escalatedEvents        Int      @default(0) @map("escalated_events")
+  acknowledgedEvents     Int      @default(0) @map("acknowledged_events")
+  missedEvents           Int      @default(0) @map("missed_events")
+  avgResponseTimeSeconds Int?     @map("avg_response_time_seconds")
+  slaComplianceRate      Decimal? @map("sla_compliance_rate") @db.Decimal(5, 2)
+  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("daily_metrics")
+}
+
+model SystemHealthLog {
+  id             String   @id @default(uuid())
+  service        String   @db.VarChar(100)
+  status         String   @db.VarChar(50)
+  responseTimeMs Int?     @map("response_time_ms")
+  errorMessage   String?  @map("error_message")
+  details        Json?
+  checkedAt      DateTime @default(now()) @map("checked_at") @db.Timestamptz(6)
+
+  @@index([service, checkedAt])
+  @@map("system_health_logs")
+}
+
+model EmailPollingStatus {
+  id                String    @id @default(uuid())
+  lastPollAt        DateTime? @map("last_poll_at") @db.Timestamptz(6)
+  lastSuccessAt     DateTime? @map("last_success_at") @db.Timestamptz(6)
+  messagesProcessed Int       @default(0) @map("messages_processed")
+  errorsCount       Int       @default(0) @map("errors_count")
+  lastError         String?   @map("last_error")
+  status            String    @default("idle") @db.VarChar(50)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("email_polling_status")
+}

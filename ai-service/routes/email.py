@@ -8,7 +8,8 @@ from typing import Optional, List
 import logging
 
 from services.email_service import get_email_service, EmailService
-from agents.email_triage_agent import EmailTriageAgent
+from services.email_poller import mark_email_processed, is_email_processed
+from ah_agents.email_triage_agent import EmailTriageAgent
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/email", tags=["email"])
@@ -132,6 +133,113 @@ async def fetch_and_triage_emails(
         }
     except Exception as e:
         logger.error(f"Fetch and triage error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/latest")
+async def fetch_latest_email(
+    folder: str = "INBOX",
+    include_read: bool = True,
+):
+    """Fetch the latest email in a folder.
+
+    By default includes read emails, since most clients auto-mark as read.
+    """
+    try:
+        email_service = get_email_service()
+        latest = await email_service.fetch_latest_email_async(
+            folder=folder,
+            include_read=include_read,
+        )
+
+        return {
+            "success": True,
+            "email": latest,
+        }
+    except Exception as e:
+        logger.error(f"Fetch latest email error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/process-latest")
+async def process_latest_email(
+    folder: str = "INBOX",
+    background_tasks: BackgroundTasks = None,
+):
+    """
+    Manually process the latest email (including read emails).
+    Useful for testing or re-processing emails that were already read.
+    """
+    from services.email_poller import create_emergency_event
+    from config import get_settings
+    settings = get_settings()
+    
+    try:
+        email_service = get_email_service()
+        triage_agent = EmailTriageAgent()
+        
+        # Fetch latest email including read
+        email_data = await email_service.fetch_latest_email_async(
+            folder=folder,
+            include_read=True,
+        )
+        
+        if not email_data:
+            return {"success": False, "error": "No email found"}
+        
+        uid = email_data.get("uid") or email_data.get("message_id")
+        if is_email_processed(uid):
+            return {
+                "success": False,
+                "error": "Email already processed",
+                "uid": uid,
+            }
+        
+        subject = email_data.get("subject", "")
+        body = email_data.get("body", "")
+        
+        logger.info(f"Processing latest email: '{subject}'")
+        
+        # Triage the email
+        triage_result = await triage_agent.classify(
+            subject=subject,
+            body=body,
+            sender_domain=email_data.get("from_domain", "")
+        )
+        
+        emergency_score = triage_result.get("emergency_score", 0)
+        threshold = settings.emergency_score_threshold
+        
+        result = {
+            "success": True,
+            "email": {
+                "subject": subject,
+                "from": email_data.get("from_email"),
+                "date": email_data.get("date"),
+            },
+            "triage": {
+                "emergency_score": emergency_score,
+                "threshold": threshold,
+                "is_emergency": emergency_score >= threshold,
+                "reasoning": triage_result.get("reasoning", ""),
+            }
+        }
+        
+        # If emergency, create event
+        if emergency_score >= threshold:
+            logger.warning(f"EMERGENCY: '{subject}' (score: {emergency_score})")
+            await create_emergency_event(email_data, triage_result)
+            result["escalation_triggered"] = True
+        else:
+            result["escalation_triggered"] = False
+
+        # Mark as processed to avoid duplicate escalations
+        mark_email_processed(uid)
+            
+        return result
+        
+    except Exception as e:
+        logger.error(f"Process latest email error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

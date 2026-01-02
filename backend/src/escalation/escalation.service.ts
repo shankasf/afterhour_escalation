@@ -22,6 +22,7 @@ interface EscalationContact {
 export class EscalationService {
   private readonly logger = new Logger(EscalationService.name);
   private activeEscalations = new Map<string, NodeJS.Timeout>();
+  private advancingEscalations = new Set<string>(); // Prevent race conditions
 
   constructor(
     private prisma: PrismaService,
@@ -126,83 +127,110 @@ export class EscalationService {
     ladder: EscalationContact[],
     index: number,
   ): Promise<void> {
-    if (index >= ladder.length) {
-      // All contacts exhausted
-      this.logger.error(`All contacts exhausted for event ${eventId}`);
-      await this.handleEscalationFailure(eventId);
+    // Prevent concurrent escalation advances for same event
+    if (this.advancingEscalations.has(eventId)) {
+      this.logger.warn(`Already advancing escalation for event ${eventId}, skipping`);
       return;
     }
+    this.advancingEscalations.add(eventId);
 
-    const contact = ladder[index];
-    const attemptNumber = index + 1;
-
-    this.logger.log(`Escalating event ${eventId} to ${contact.name} (attempt ${attemptNumber})`);
-
-    // Create escalation log entry
-    const escalationLog = await this.prisma.escalationLog.create({
-      data: {
-        eventId,
-        contactId: contact.id,
-        userId: contact.userId,
-        attemptNumber,
-        callStatus: CallStatus.not_called,
-        smsStatus: SmsStatus.not_sent,
-      },
-    });
-
-    // Emit websocket update
-    this.wsGateway.emitEscalationUpdate({
-      eventId,
-      contactName: contact.name,
-      attemptNumber,
-      status: 'calling',
-    });
+    // Track whether we need to advance after releasing the lock
+    let nextIndex: number | null = null;
 
     try {
-      // Call AI service to send call and SMS simultaneously
-      const result = await this.aiService.sendEscalation({
+      // Re-check event status to prevent escalating acknowledged events
+      const currentEvent = await this.prisma.event.findUnique({
+        where: { id: eventId },
+      });
+      if (currentEvent?.status === EventStatus.acknowledged) {
+        this.logger.log(`Event ${eventId} already acknowledged, stopping escalation`);
+        this.activeEscalations.delete(eventId);
+        return;
+      }
+
+      if (index >= ladder.length) {
+        // All contacts exhausted
+        this.logger.error(`All contacts exhausted for event ${eventId}`);
+        await this.handleEscalationFailure(eventId);
+        return;
+      }
+
+      const contact = ladder[index];
+      const attemptNumber = index + 1;
+
+      this.logger.log(`Escalating event ${eventId} to ${contact.name} (attempt ${attemptNumber})`);
+
+      // Create escalation log entry
+      const escalationLog = await this.prisma.escalationLog.create({
+        data: {
+          eventId,
+          contactId: contact.id,
+          userId: contact.userId,
+          attemptNumber,
+          callStatus: CallStatus.not_called,
+          smsStatus: SmsStatus.not_sent,
+        },
+      });
+
+      // Emit websocket update
+      this.wsGateway.emitEscalationUpdate({
         eventId,
-        escalationLogId: escalationLog.id,
-        contact: {
-          name: contact.name,
-          phone: contact.phoneNumber,
-        },
-        event: await this.prisma.event.findUnique({ where: { id: eventId } }),
+        contactName: contact.name,
+        attemptNumber,
+        status: 'calling',
       });
 
-      // Update escalation log with call/SMS SIDs
-      await this.prisma.escalationLog.update({
-        where: { id: escalationLog.id },
-        data: {
-          callSid: result.callSid,
-          callStatus: CallStatus.ringing,
-          smsSid: result.smsSid,
-          smsStatus: SmsStatus.sent,
-        },
-      });
+      try {
+        // Call AI service to send call and SMS simultaneously
+        const result = await this.aiService.sendEscalation({
+          eventId,
+          escalationLogId: escalationLog.id,
+          contact: {
+            name: contact.name,
+            phone: contact.phoneNumber,
+          },
+          event: await this.prisma.event.findUnique({ where: { id: eventId } }),
+        });
 
-      // Set timeout for acknowledgment
-      const timeoutMs = await this.getAckTimeoutMs();
-      const timeout = setTimeout(async () => {
-        await this.handleAckTimeout(eventId, escalationLog.id, ladder, index);
-      }, timeoutMs);
+        // Update escalation log with call/SMS SIDs
+        await this.prisma.escalationLog.update({
+          where: { id: escalationLog.id },
+          data: {
+            callSid: result.callSid,
+            callStatus: CallStatus.ringing,
+            smsSid: result.smsSid,
+            smsStatus: SmsStatus.sent,
+          },
+        });
 
-      this.activeEscalations.set(eventId, timeout);
+        // Set timeout for acknowledgment
+        const timeoutMs = await this.getAckTimeoutMs();
+        const timeout = setTimeout(async () => {
+          await this.handleAckTimeout(eventId, escalationLog.id, ladder, index);
+        }, timeoutMs);
 
-    } catch (error) {
-      this.logger.error(`Failed to escalate to ${contact.name}: ${error.message}`);
-      
-      await this.prisma.escalationLog.update({
-        where: { id: escalationLog.id },
-        data: {
-          callStatus: CallStatus.failed,
-          smsStatus: SmsStatus.failed,
-          errorMessage: error.message,
-        },
-      });
+        this.activeEscalations.set(eventId, timeout);
+      } catch (error) {
+        this.logger.error(`Failed to escalate to ${contact.name}: ${error.message}`);
 
-      // Move to next contact
-      await this.escalateToContact(eventId, ladder, index + 1);
+        await this.prisma.escalationLog.update({
+          where: { id: escalationLog.id },
+          data: {
+            callStatus: CallStatus.failed,
+            smsStatus: SmsStatus.failed,
+            errorMessage: error.message,
+          },
+        });
+
+        // Move to next contact after releasing the lock
+        nextIndex = index + 1;
+      }
+    } finally {
+      this.advancingEscalations.delete(eventId);
+    }
+
+    if (nextIndex !== null) {
+      await this.escalateToContact(eventId, ladder, nextIndex);
     }
   }
 
@@ -393,5 +421,102 @@ export class EscalationService {
 
   async deleteEscalationContact(id: string): Promise<void> {
     await this.prisma.escalationContact.delete({ where: { id } });
+  }
+
+  /**
+   * Handle Twilio call status callback.
+   * Advances escalation on terminal failure statuses (busy, no-answer, failed).
+   */
+  async handleCallStatusCallback(data: {
+    callSid: string;
+    status: string;
+    eventId?: string;
+    escalationLogId?: string;
+  }): Promise<void> {
+    this.logger.log(`Call status callback: ${data.callSid} -> ${data.status}`);
+
+    // Map Twilio status to our CallStatus enum
+    const statusMap: Record<string, CallStatus> = {
+      queued: CallStatus.not_called,
+      ringing: CallStatus.ringing,
+      'in-progress': CallStatus.answered,
+      completed: CallStatus.answered,
+      busy: CallStatus.busy,
+      failed: CallStatus.failed,
+      'no-answer': CallStatus.no_answer,
+      canceled: CallStatus.failed,
+    };
+
+    const callStatus = statusMap[data.status] || CallStatus.failed;
+
+    // Update the escalation log
+    const logs = await this.prisma.escalationLog.findMany({
+      where: { callSid: data.callSid },
+      include: { event: true },
+    });
+
+    if (logs.length === 0) {
+      this.logger.warn(`No escalation log found for callSid ${data.callSid}`);
+      return;
+    }
+
+    const log = logs[0];
+
+    await this.prisma.escalationLog.update({
+      where: { id: log.id },
+      data: { callStatus },
+    });
+
+    // Check if event is already acknowledged — if so, do nothing
+    if (log.event.status === EventStatus.acknowledged) {
+      this.logger.log(`Event ${log.eventId} already acknowledged, ignoring call status`);
+      return;
+    }
+
+    // On terminal failure statuses, advance to next contact immediately
+    const failureStatuses: CallStatus[] = [CallStatus.busy, CallStatus.no_answer, CallStatus.failed];
+    if (failureStatuses.includes(callStatus)) {
+      this.logger.log(`Call failed (${data.status}), advancing escalation for event ${log.eventId}`);
+
+      // Clear any existing timeout for this event
+      const timeout = this.activeEscalations.get(log.eventId);
+      if (timeout) {
+        clearTimeout(timeout);
+        this.activeEscalations.delete(log.eventId);
+      }
+
+      // Get ladder and move to next contact
+      const ladder = (log.event.escalationLadderSnapshot as any) || [];
+      const nextIndex = log.attemptNumber; // attemptNumber is 1-based, so this is next index
+      await this.escalateToContact(log.eventId, ladder, nextIndex);
+    }
+  }
+
+  /**
+   * Handle Twilio SMS status callback.
+   */
+  async handleSmsStatusCallback(data: {
+    smsSid: string;
+    status: string;
+    eventId?: string;
+    escalationLogId?: string;
+  }): Promise<void> {
+    this.logger.log(`SMS status callback: ${data.smsSid} -> ${data.status}`);
+
+    // Map Twilio SMS status to our SmsStatus enum
+    const statusMap: Record<string, SmsStatus> = {
+      queued: SmsStatus.sent,
+      sent: SmsStatus.sent,
+      delivered: SmsStatus.delivered,
+      undelivered: SmsStatus.failed,
+      failed: SmsStatus.failed,
+    };
+
+    const smsStatus = statusMap[data.status] || SmsStatus.failed;
+
+    await this.prisma.escalationLog.updateMany({
+      where: { smsSid: data.smsSid },
+      data: { smsStatus },
+    });
   }
 }

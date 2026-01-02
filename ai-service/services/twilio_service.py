@@ -66,9 +66,10 @@ class TwilioService:
             # Build webhook URL with parameters - URL encode the script
             webhook_base = settings.twilio_webhook_url or f"{settings.backend_url}/twilio"
             # Use urlencode for proper URL encoding of parameters
+            # Voice scripts should be ~35-40 words (~250-300 chars) per design spec
             params = urlencode({
                 'event_id': event_id,
-                'script': voice_script[:200]  # Limit script length for URL
+                'script': voice_script[:500]  # Allow full script up to 500 chars
             })
             voice_url = f"{webhook_base}/voice?{params}"
             status_callback = f"{webhook_base}/voice/status?event_id={event_id}&escalation_log_id={escalation_log_id}"

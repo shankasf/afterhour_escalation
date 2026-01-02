@@ -144,7 +144,7 @@ export default function Events() {
                     <div className="p-8 text-center">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto"></div>
                     </div>
-                ) : data?.data.length === 0 ? (
+                ) : !data?.data || data?.data?.length === 0 ? (
                     <div className="p-8 text-center text-gray-500">
                         No events found
                     </div>

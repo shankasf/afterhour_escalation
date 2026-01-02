@@ -93,6 +93,7 @@ CREATE TABLE events (
     source event_source NOT NULL,
     subject VARCHAR(500),
     body TEXT,
+    ai_summary TEXT,
     sender_domain VARCHAR(255),
     sender_email VARCHAR(255),
     sender_phone VARCHAR(50),

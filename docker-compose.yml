@@ -42,8 +42,10 @@ services:
       dockerfile: backend/Dockerfile
     container_name: escalation-backend
     environment:
-      # Using Supabase pooler (IPv4) 
-      DATABASE_URL: postgresql://postgres.ysphdgphpqwrmjywzyju:0GhQjMHAtlBAbkHf@aws-0-us-west-2.pooler.supabase.com:5432/postgres
+      # Database connection for Prisma/NestJS.
+      # Prefer providing DATABASE_URL via your local .env.
+      # Default points at the compose postgres container.
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:escalation_password@postgres:5432/escalation}
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:-afterhours-jwt-secret-key-change-in-production}
       AI_SERVICE_URL: http://ai-service:8083
@@ -86,8 +88,11 @@ services:
     container_name: escalation-ai-service
     environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
-      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o}
-      EMERGENCY_THRESHOLD: ${EMERGENCY_THRESHOLD:-80}
+      # Not used yet (reserved for future call-audio generation)
+      OPENAI_VOICE_MODEL: ${OPENAI_VOICE_MODEL:-gpt-realtime-2025-08-28}
+      OPENAI_VOICE_NAME: ${OPENAI_VOICE_NAME:-alloy}
+      # Emergency score is 0.0-1.0 in code.
+      EMERGENCY_SCORE_THRESHOLD: ${EMERGENCY_SCORE_THRESHOLD:-0.6}
       # Twilio
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID}
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
@@ -119,6 +124,7 @@ services:
       - "8083:8083"
     volumes:
       - ai_service_logs:/app/logs
+      - ai_service_data:/app/data
     restart: unless-stopped
 
   # React Frontend (nginx)
@@ -141,6 +147,8 @@ volumes:
   backend_logs:
     driver: local
   ai_service_logs:
+    driver: local
+  ai_service_data:
     driver: local
 
 networks:

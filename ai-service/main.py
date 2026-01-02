@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging
+import asyncio
 
 from config import get_settings
 from routes.classify import router as classify_router
@@ -11,6 +12,7 @@ from routes.escalate import router as escalate_router
 from routes.twilio_webhooks import router as twilio_router
 from routes.health import router as health_router
 from routes.email import router as email_router
+from services.email_poller import start_email_poller
 
 # Configure logging
 logging.basicConfig(
@@ -21,11 +23,29 @@ logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
+# Global reference to the poller task
+_poller_task = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _poller_task
     logger.info("Starting AI Service...")
+    
+    # Start email poller as background task
+    poll_interval = 30  # seconds
+    logger.info(f"Starting email poller (interval: {poll_interval}s)")
+    _poller_task = asyncio.create_task(start_email_poller(poll_interval))
+    
     yield
+    
+    # Cancel poller on shutdown
+    if _poller_task:
+        _poller_task.cancel()
+        try:
+            await _poller_task
+        except asyncio.CancelledError:
+            pass
     logger.info("Shutting down AI Service...")
 
 

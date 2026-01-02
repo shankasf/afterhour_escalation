@@ -1,46 +1,45 @@
-# 🚨 After-Hours Escalation System
+After-Hours Escalation System
+============================
 
-A comprehensive after-hours maintenance escalation system that ingests service requests from email and missed calls/voicemails, evaluates whether they constitute emergencies using AI, and escalates to on-call staff via phone and SMS until someone acknowledges.
+An after-hours escalation system for property/maintenance operations.
 
-![License](https://img.shields.io/badge/license-Proprietary-red)
-![Node](https://img.shields.io/badge/node-20+-green)
-![Python](https://img.shields.io/badge/python-3.11+-blue)
-![Docker](https://img.shields.io/badge/docker-ready-blue)
+It ingests urgent requests from:
+- Email (IMAP poller)
+- Dialpad inbound calls (missed calls + voicemails)
 
-## 📋 Table of Contents
+It triages them using a multi-agent AI system (OpenAI Agents SDK) and escalates to the on-call ladder via:
+- Twilio outbound voice calls
+- Twilio SMS (also used for inbound ACK replies)
 
-- [Features](#-features)
-- [Architecture](#-architecture)
-- [Tech Stack](#-tech-stack)
-- [Quick Start](#-quick-start)
-- [Docker Deployment](#-docker-deployment)
-- [Configuration](#-configuration)
-- [API Documentation](#-api-documentation)
-- [Escalation Flow](#-escalation-flow)
-- [Dashboard Features](#-dashboard-features)
-- [Integrations](#-integrations)
-- [Troubleshooting](#-troubleshooting)
+Key constraints (by design)
+---------------------------
 
-## 🚀 Features
+- Model lock: All AI agents use `gpt-5.2` (environment overrides are ignored if different).
+- Dialpad is inbound voice only.
+- Twilio is outbound voice + SMS (SMS replies are inbound for acknowledgments; inbound voice calls are rejected).
+- Intended coverage window: 12:00 AM – 7:00 AM US/Eastern (America/New_York). The AI orchestrator can block escalations outside the window unless forced.
 
-### Core Capabilities
-- **Multi-channel Intake**: Email (Gmail IMAP), Dialpad voicemail/missed calls
-- **AI-Powered Classification**: GPT-4o based emergency scoring with intelligent context extraction
-- **Smart Escalation**: Automated phone + SMS escalation with configurable ladder
-- **On-Call Rotation**: Weekly rotation management with primary/secondary contacts
-- **Real-time Dashboard**: Live event tracking with WebSocket updates
-- **SLA Monitoring**: Track acknowledgment times and compliance metrics
-- **Admin Alerts**: Email + SMS notifications for failures and SLA breaches
+Table of Contents
+-----------------
 
-### Escalation Features
-- Simultaneous call + SMS delivery for maximum reach
-- DTMF acknowledgment (press 1 to acknowledge)
-- SMS reply acknowledgment ("ACK" keyword)
-- Configurable timeout between escalation levels
-- Automatic escalation to next contact on no response
-- Admin alerts when all contacts exhausted
+- [High-Level Architecture](#high-level-architecture)
+- [Core Flows](#core-flows)
+    - [Email Intake](#email-intake)
+    - [Dialpad Inbound Calls + Voicemail](#dialpad-inbound-calls--voicemail)
+    - [Escalation + Acknowledgment](#escalation--acknowledgment)
+- [Services & Ports](#services--ports)
+- [Configuration](#configuration)
+    - [Shared](#shared)
+    - [AI Service (FastAPI)](#ai-service-fastapi)
+    - [Backend (NestJS)](#backend-nestjs)
+    - [Twilio & Dialpad Webhook URLs](#twilio--dialpad-webhook-urls)
+- [Running Locally](#running-locally)
+    - [Docker Compose (recommended)](#docker-compose-recommended)
+    - [Dev Mode (3 terminals)](#dev-mode-3-terminals)
+- [Troubleshooting](#troubleshooting)
 
-## 🏗️ Architecture
+High-Level Architecture
+-----------------------
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -63,13 +62,13 @@ A comprehensive after-hours maintenance escalation system that ingests service r
                               ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                           AI SERVICE                                     │
-│                      FastAPI + Python + OpenAI                           │
+│                FastAPI + Python + OpenAI Agents SDK                       │
 │                          (Port 8083)                                     │
 │                                                                          │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐       │
-│  │ Classify │ │Escalation│ │  Voice   │ │   SMS    │ │  Email   │       │
-│  │  Agent   │ │  Agent   │ │  Agent   │ │  Agent   │ │  Triage  │       │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘       │
+│  ┌──────────┐ ┌──────────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐   │
+│  │ Classify │ │ Orchestrator  │ │  Voice   │ │   SMS    │ │  Email   │   │
+│  │  Route   │ │ (multi-agent) │ │  Agent   │ │  Agent   │ │  Poller  │   │
+│  └──────────┘ └──────────────┘ └──────────┘ └──────────┘ └──────────┘   │
 └─────────────────────────────┬───────────────────────────────────────────┘
                               │
          ┌────────────────────┼────────────────────┐
@@ -80,87 +79,218 @@ A comprehensive after-hours maintenance escalation system that ingests service r
 │  (Database) │      │   (Queue)   │      │ (Voice/SMS) │
 └─────────────┘      └─────────────┘      └─────────────┘
 ```
+Notes:
+- Redis is included in `docker-compose.yml` for legacy/future use, but current backend/ai-service codepaths do not require Redis for core functionality.
 
-## 📦 Tech Stack
+Core Flows
+----------
 
-| Component | Technology |
-|-----------|------------|
-| **Frontend** | React 18, TypeScript, Vite, Tailwind CSS, Recharts |
-| **Backend** | NestJS 10, Prisma ORM, PostgreSQL 15 |
-| **AI Service** | FastAPI, Python 3.11, OpenAI GPT-4o |
-| **Queue** | Redis 7, BullMQ |
-| **Telephony** | Twilio (Voice + SMS), Dialpad (optional) |
-| **Email** | Gmail IMAP/SMTP |
-| **Deployment** | Docker, Docker Compose, Nginx |
+Email Intake
+~~~~~~~~~~~
 
-## 🛠️ Quick Start
+1. AI Service polls IMAP (default interval: 30 seconds).
+2. New unread emails are triaged by the Email Triage agent (Agents SDK).
+3. If the score meets threshold, AI Service creates an event in the backend (`/api/events/email`) using `x-internal-key`.
+4. AI Service triggers the backend internal escalation start endpoint (`/api/escalation/start/:eventId`).
+5. Backend escalates via Twilio (call + SMS) until acknowledged.
 
-### Prerequisites
+Dialpad Inbound Calls + Voicemail
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-- Node.js 20+
-- Python 3.11+
-- PostgreSQL 15+
-- Redis 7+
-- Docker & Docker Compose (recommended)
+Dialpad is the system’s inbound phone entrypoint.
 
-### Local Development Setup
+1. Dialpad sends call-event webhooks to AI Service (`POST /dialpad`).
+2. AI Service parses the call state. For inbound calls, these states are actionable:
+    - `missed`
+    - `voicemail`
+    - `voicemail_uploaded`
+    - `transcription`
+3. AI Service runs the multi-agent orchestrator on the voicemail transcription (if present).
+4. AI Service posts a Dialpad event to the backend dashboard (`POST /api/events/dialpad`) using `x-internal-key`.
 
-1. **Clone the repository:**
-```bash
-git clone https://github.com/shankasf/afterhour_escalation.git
-cd afterhour_escalation
-```
+Escalation + Acknowledgment
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-2. **Install dependencies:**
-```bash
-# Root dependencies
-npm install
+Escalation is executed by the backend’s ladder, using the AI Service as a “delivery + content generation” helper.
 
-# Frontend
-cd frontend && npm install && cd ..
+1. Backend selects the next contact (rotation + fixed contacts) and calls the AI Service (`POST /escalate`).
+2. AI Service:
+    - Generates a voice script (Voice AI agent) and an SMS message.
+    - Places a Twilio outbound call and sends a Twilio SMS in parallel.
+3. Acknowledgment options:
+    - Voice: press `1` during the call (DTMF gather).
+    - SMS: reply with `ACK`.
+    - Optional: `DOWNGRADE` to mark a false alarm/non-emergency.
+4. AI Service posts call/SMS status callbacks to backend internal endpoints for tracking.
 
-# Backend
-cd backend && npm install && cd ..
+Services & Ports
+----------------
 
-# AI Service
-cd ai-service
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
-cd ..
-```
+- Frontend (Vite build served via Nginx): `http://localhost:5175`
+- Backend (NestJS): `http://localhost:3004`
+  - Swagger: `http://localhost:3004/api/docs`
+- AI Service (FastAPI): `http://localhost:8083`
 
-3. **Configure environment:**
+Configuration
+-------------
+
+Shared
+~~~~~~
+
+- `INTERNAL_API_KEY`
+  - Used for service-to-service calls.
+  - Backend expects this key on internal endpoints.
+  - AI Service uses it when posting to backend.
+
+AI Service (FastAPI)
+~~~~~~~~~~~~~~~~~~~
+
+Required:
+
+- `OPENAI_API_KEY`
+- `BACKEND_URL` (e.g. `http://localhost:3004` or `http://backend:3004` in Docker)
+
+Model behavior:
+
+- `OPENAI_MODEL` exists but the AI agents are locked to `gpt-5.2` in code.
+
+Twilio (outbound voice + SMS):
+
+- `TWILIO_ACCOUNT_SID`
+- `TWILIO_AUTH_TOKEN`
+- `TWILIO_PHONE_NUMBER`
+- `TWILIO_WEBHOOK_URL` (public base URL where Twilio can reach `/twilio/*`)
+
+Dialpad (inbound voice):
+
+- `DIALPAD_API_KEY` (optional; only needed if you also fetch details via Dialpad API)
+- `DIALPAD_WEBHOOK_SECRET` (recommended; used to verify JWT-encoded webhooks)
+
+Email (IMAP/SMTP):
+
+- `IMAP_HOST`, `IMAP_PORT`, `IMAP_USER`, `IMAP_PASSWORD`, `IMAP_ENCRYPTION`
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_ENCRYPTION`
+- `EMAIL_FROM_ADDRESS`, `EMAIL_FROM_NAME`, `ADMIN_EMAIL`
+
+Backend (NestJS)
+~~~~~~~~~~~~~~~
+
+Required:
+
+- `DATABASE_URL`
+- `JWT_SECRET`
+- `AI_SERVICE_URL` (e.g. `http://localhost:8083` or `http://ai-service:8083` in Docker)
+- `INTERNAL_API_KEY`
+
+Twilio is configured in the backend environment as well so the backend can render correct webhook URLs and track escalations.
+
+Twilio & Dialpad Webhook URLs
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Twilio
+
+- Voice (TwiML): `POST {TWILIO_WEBHOOK_URL}/voice`
+- Voice gather (DTMF): `POST {TWILIO_WEBHOOK_URL}/voice/gather`
+- Voice status callbacks: `POST {TWILIO_WEBHOOK_URL}/voice/status`
+- SMS inbound (ACK replies): `POST {TWILIO_WEBHOOK_URL}/sms`
+- SMS status callbacks: `POST {TWILIO_WEBHOOK_URL}/sms/status`
+
+Dialpad
+
+- Call event webhook: `POST http(s)://<ai-service-host>/dialpad`
+
+Running Locally
+---------------
+
+Prerequisites
+~~~~~~~~~~~~~
+
+- Node.js 18+ (20+ recommended)
+- Python 3.11+ (3.12 works)
+- Docker + Docker Compose (recommended)
+
+Docker Compose (recommended)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+1. Create your environment file:
+
 ```bash
 cp .env.example .env
-# Edit .env with your credentials
 ```
 
-4. **Start infrastructure:**
+2. Start everything:
+
 ```bash
-docker compose up -d postgres redis
+docker compose up -d --build
 ```
 
-5. **Run database migrations:**
+3. Backend API docs:
+
+```text
+http://localhost:3004/api/docs
+```
+
+Dev Mode (3 terminals)
+~~~~~~~~~~~~~~~~~~~~~~
+
+Terminal 1 (backend):
+
 ```bash
 cd backend
-npx prisma migrate deploy
-npx prisma db seed
-cd ..
+npm install
+npm run start:dev
 ```
 
-6. **Start all services:**
+Terminal 2 (ai-service):
+
 ```bash
+cd ai-service
+python -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt
+uvicorn main:app --reload --host 0.0.0.0 --port 8083
+```
+
+Terminal 3 (frontend):
+
+```bash
+cd frontend
+npm install
 npm run dev
 ```
 
-Services will be available at:
-- Frontend: http://localhost:5175
-- Backend: http://localhost:3004
-- AI Service: http://localhost:8083
-- API Docs: http://localhost:3004/api/docs
+Troubleshooting
+---------------
 
-## 🐳 Docker Deployment
+AI service says “OpenAI API key not configured”
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Set `OPENAI_API_KEY` and restart the AI service.
+- Without it, the system uses fallback/template behavior for some outputs.
+
+Twilio calls/SMS are “simulated”
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Confirm `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER` are set for the AI service.
+- If credentials are missing, Twilio sending is disabled and the code returns simulated SIDs.
+
+Dialpad webhook verification failing
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Set `DIALPAD_WEBHOOK_SECRET` to match the Dialpad event subscription secret.
+- Dialpad webhooks are expected to arrive as JWT tokens.
+
+Backend returns 401 on internal calls
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Ensure both backend and AI service share the same `INTERNAL_API_KEY`.
+- Internal endpoints are protected with `x-internal-key`.
+
+Where to look for logs
+~~~~~~~~~~~~~~~~~~~~~~
+
+- AI service logs: `logs/ai-service/`
+- Backend logs: `logs/backend/`
 
 ### Quick Deploy
 
@@ -238,7 +368,8 @@ JWT_SECRET=your-secure-jwt-secret
 
 # OpenAI (Required for AI classification)
 OPENAI_API_KEY=sk-your-openai-api-key
-OPENAI_MODEL=gpt-4o
+# Note: the AI service enforces gpt-5.2 (env overrides are ignored if different)
+OPENAI_MODEL=gpt-5.2
 
 # Twilio (Required for voice/SMS)
 TWILIO_ACCOUNT_SID=ACxxxxxxxxxx
@@ -264,8 +395,8 @@ SMTP_PASSWORD=your-app-password
 DIALPAD_API_KEY=your-dialpad-api-key
 DIALPAD_WEBHOOK_SECRET=your-webhook-secret
 
-# Emergency Detection
-EMERGENCY_THRESHOLD=80
+# Emergency Detection (AI service uses 0.0-1.0 scoring)
+EMERGENCY_SCORE_THRESHOLD=0.6
 
 # Admin Notifications
 ADMIN_EMAIL=admin@example.com
@@ -320,14 +451,13 @@ EMAIL_FROM_NAME=After-Hours Escalation System
                               ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                     AI CLASSIFICATION                                │
-│         GPT-4o analyzes content and assigns emergency score          │
-│                        (0-100 scale)                                 │
+│     gpt-5.2 analyzes content and assigns emergency score (0.0-1.0)    │
 └─────────────────────────────┬───────────────────────────────────────┘
                               │
               ┌───────────────┴───────────────┐
               │                               │
               ▼                               ▼
-     Score >= 80                      Score < 80
+    Score >= threshold               Score < threshold
    ┌───────────────┐              ┌───────────────┐
    │   EMERGENCY   │              │  NON-URGENT   │
    │  Escalation   │              │ Email-only    │
@@ -447,11 +577,11 @@ After running database seed:
 
 | Name | Role | Phone |
 |------|------|-------|
-| Jordan | On-Call (Primary) | +18453884267 |
-| Christina | On-Call (Secondary) | +16508552762 |
-| Matt Mehler | Fixed Contact | - |
-| Karina Blondet | Fixed Contact | - |
-| Katelyn Badger | Fixed Contact | - |
+| Primary On-Call | On-Call (Primary) | +15555550101 |
+| Secondary On-Call | On-Call (Secondary) | +15555550102 |
+| Fixed Contact 1 | Fixed Contact | - |
+| Fixed Contact 2 | Fixed Contact | - |
+| Fixed Contact 3 | Fixed Contact | - |
 
 ## 🔧 Troubleshooting
 

@@ -1,20 +1,27 @@
 import { 
   Controller, Get, Post, Put, Param, Body, Query, 
-  UseGuards, Res, HttpStatus 
+  UseGuards, Res, HttpStatus, Headers, UnauthorizedException 
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery, ApiHeader } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { Response } from 'express';
 import { EventsService } from './events.service';
 import { EventSource, EventStatus } from '@prisma/client';
 import { CreateEmailEventDto, CreateDialpadEventDto, UpdateEventStatusDto } from './dto/event.dto';
+import { ConfigService } from '@nestjs/config';
 
 @ApiTags('events')
-@ApiBearerAuth()
 @Controller('events')
-@UseGuards(AuthGuard('jwt'))
 export class EventsController {
-  constructor(private eventsService: EventsService) {}
+  constructor(
+    private eventsService: EventsService,
+    private configService: ConfigService,
+  ) {}
+
+  private isInternalRequest(apiKey: string | undefined): boolean {
+    const internalKey = this.configService.get<string>('INTERNAL_API_KEY') || 'internal-service-key';
+    return apiKey === internalKey;
+  }
 
   // Map frontend status names to backend enum values
   private mapStatus(status: string): EventStatus | undefined {
@@ -37,6 +44,8 @@ export class EventsController {
   }
 
   @Get()
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get all events with filters' })
   @ApiQuery({ name: 'status', required: false, description: 'Comma-separated statuses' })
   @ApiQuery({ name: 'source', required: false, enum: EventSource })
@@ -71,12 +80,38 @@ export class EventsController {
   }
 
   @Get('active-escalations')
+  @ApiHeader({ name: 'x-internal-key', required: false })
   @ApiOperation({ summary: 'Get currently active escalations' })
-  async getActiveEscalations() {
+  async getActiveEscalations(
+    @Headers('x-internal-key') internalKey?: string,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    // Allow internal service calls or JWT auth
+    if (!this.isInternalRequest(internalKey) && !authHeader) {
+      throw new UnauthorizedException('Authorization required');
+    }
     return this.eventsService.getActiveEscalations();
   }
 
+  @Get('acknowledged')
+  @ApiHeader({ name: 'x-internal-key', required: false })
+  @ApiOperation({ summary: 'Get acknowledged events, optionally filtered by owner' })
+  @ApiQuery({ name: 'ownerId', required: false })
+  async getAcknowledged(
+    @Query('ownerId') ownerId?: string,
+    @Headers('x-internal-key') internalKey?: string,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    // Allow internal service calls or JWT auth
+    if (!this.isInternalRequest(internalKey) && !authHeader) {
+      throw new UnauthorizedException('Authorization required');
+    }
+    return this.eventsService.getAcknowledgedEvents(ownerId);
+  }
+
   @Get('export')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Export events to CSV' })
   async exportCsv(
     @Res() res: Response,
@@ -94,40 +129,87 @@ export class EventsController {
   }
 
   @Get(':id')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get event by ID' })
   async findOne(@Param('id') id: string) {
     return this.eventsService.findById(id);
   }
 
   @Post('email')
+  @ApiHeader({ name: 'x-internal-key', required: false })
   @ApiOperation({ summary: 'Create email event (from email poller)' })
-  async createEmailEvent(@Body() dto: CreateEmailEventDto) {
+  async createEmailEvent(
+    @Body() dto: CreateEmailEventDto,
+    @Headers('x-internal-key') internalKey?: string,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    // Allow internal service calls or JWT auth
+    if (!this.isInternalRequest(internalKey) && !authHeader) {
+      throw new UnauthorizedException('Authorization required');
+    }
     return this.eventsService.createEmailEvent({
       subject: dto.subject,
       body: dto.body,
       senderEmail: dto.senderEmail,
       senderDomain: dto.senderDomain,
-      receivedAt: new Date(dto.receivedAt),
+      receivedAt: dto.receivedAt ? new Date(dto.receivedAt) : new Date(),
+      emergencyScore: dto.emergencyScore,
+      aiSummary: dto.aiSummary,
     });
   }
 
   @Post('dialpad')
-  @ApiOperation({ summary: 'Create Dialpad event (from webhook)' })
-  async createDialpadEvent(@Body() dto: CreateDialpadEventDto) {
+  @ApiHeader({ name: 'x-internal-key', required: false })
+  @ApiOperation({ summary: 'Create Dialpad event (from webhook or internal service)' })
+  async createDialpadEvent(
+    @Body() dto: CreateDialpadEventDto,
+    @Headers('x-internal-key') internalKey?: string,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    // Allow internal service calls or JWT auth
+    if (!this.isInternalRequest(internalKey) && !authHeader) {
+      throw new UnauthorizedException('Authorization required');
+    }
     return this.eventsService.createDialpadEvent({
       senderPhone: dto.senderPhone,
+      senderName: dto.senderName,
       voicemailTranscription: dto.voicemailTranscription,
       voicemailUrl: dto.voicemailUrl,
       receivedAt: new Date(dto.receivedAt),
+      callId: dto.callId,
+      state: dto.state,
+      emergencyScore: dto.emergencyScore,
+      priority: dto.priority,
+      triageReasoning: dto.triageReasoning,
+      issueSummary: dto.issueSummary,
     });
   }
 
   @Put(':id/status')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Update event status' })
   async updateStatus(
     @Param('id') id: string,
     @Body() dto: UpdateEventStatusDto,
   ) {
     return this.eventsService.updateStatus(id, dto.status, dto.userId);
+  }
+
+  @Post(':id/downgrade')
+  @ApiHeader({ name: 'x-internal-key', required: false })
+  @ApiOperation({ summary: 'Downgrade event to non-emergency (by owner)' })
+  async downgradeEvent(
+    @Param('id') id: string,
+    @Body() body: { userId: string; reason: string },
+    @Headers('x-internal-key') internalKey?: string,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    // Allow internal service calls or JWT auth
+    if (!this.isInternalRequest(internalKey) && !authHeader) {
+      throw new UnauthorizedException('Authorization required');
+    }
+    return this.eventsService.downgradeEvent(id, body.userId, body.reason);
   }
 }

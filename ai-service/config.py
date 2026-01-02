@@ -5,8 +5,12 @@ from functools import lru_cache
 class Settings(BaseSettings):
     # OpenAI
     openai_api_key: str = ""
-    openai_model: str = "gpt-4o"
-    openai_voice_model: str = "gpt-4o-audio-preview"
+    # LLM used for text reasoning (Responses API)
+    openai_model: str = "gpt-5.2"
+    # Voice-capable model used for call audio generation
+    openai_voice_model: str = "gpt-realtime-2025-08-28"
+    # Voice name for audio rendering (model-dependent)
+    openai_voice_name: str = "alloy"
     
     # Twilio
     twilio_account_sid: str = ""

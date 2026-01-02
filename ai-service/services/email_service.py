@@ -222,6 +222,53 @@ class EmailService:
                     mail.logout()
                 except:
                     pass
+
+    def fetch_latest_email(
+        self,
+        folder: str = "INBOX",
+        include_read: bool = True,
+    ) -> Optional[Dict[str, Any]]:
+        """Fetch the latest email in a folder.
+
+        Note: This uses IMAP message sequence ordering within the selected folder.
+        For Gmail, this will reflect arrival order in that folder.
+        """
+        mail = None
+        try:
+            mail = self._connect_imap()
+            mail.select(folder)
+
+            criteria = 'ALL' if include_read else 'UNSEEN'
+            status, messages = mail.search(None, criteria)
+            if status != 'OK':
+                logger.warning(f"IMAP search failed: {status}")
+                return None
+
+            message_ids = messages[0].split()
+            if not message_ids:
+                logger.info(f"No messages found in {folder} (criteria={criteria})")
+                return None
+
+            latest_id = message_ids[-1]
+            status, msg_data = mail.fetch(latest_id, '(RFC822)')
+            if status != 'OK' or not msg_data or not msg_data[0]:
+                logger.warning(f"IMAP fetch failed for latest message: {latest_id}")
+                return None
+
+            raw_email = msg_data[0][1]
+            msg = email.message_from_bytes(raw_email)
+            parsed = self._parse_email(msg)
+            parsed['uid'] = latest_id.decode()
+            return parsed
+        except Exception as e:
+            logger.error(f"Error fetching latest email: {str(e)}")
+            return None
+        finally:
+            if mail:
+                try:
+                    mail.logout()
+                except:
+                    pass
     
     def fetch_emails_since(
         self, 
@@ -320,6 +367,18 @@ class EmailService:
         return await loop.run_in_executor(
             self.executor, 
             lambda: self.fetch_unread_emails(folder, limit)
+        )
+
+    async def fetch_latest_email_async(
+        self,
+        folder: str = "INBOX",
+        include_read: bool = True,
+    ) -> Optional[Dict[str, Any]]:
+        """Async wrapper for fetch_latest_email."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            self.executor,
+            lambda: self.fetch_latest_email(folder=folder, include_read=include_read),
         )
     
     # =====================================

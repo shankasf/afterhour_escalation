@@ -6,13 +6,15 @@ from twilio.twiml.voice_response import VoiceResponse, Gather
 from twilio.request_validator import RequestValidator
 
 from config import get_settings
-from agents.ack_monitor_agent import AckMonitorAgent
+from ah_agents.ack_monitor_agent import AckMonitorAgent
+from ah_agents.voice_agent import get_voice_agent
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
 ack_monitor = AckMonitorAgent()
+voice_agent = get_voice_agent()
 
 
 def create_twiml_response(content: str) -> Response:
@@ -24,17 +26,51 @@ def create_twiml_response(content: str) -> Response:
 async def handle_voice_call(request: Request):
     """
     Handle outbound voice call - provide TwiML instructions.
+    
+    All outbound calls are powered by Twilio. This endpoint returns TwiML
+    that instructs Twilio how to conduct the call.
     """
     form_data = await request.form()
     event_id = form_data.get("event_id") or request.query_params.get("event_id")
     script = form_data.get("script") or request.query_params.get("script", 
         "After-hours emergency received. Press 1 to acknowledge and take ownership.")
+    answered_by = form_data.get("AnsweredBy")  # Machine detection result
     
-    logger.info(f"Voice call initiated for event {event_id}")
+    # Outbound-only guard: if a random inbound call hits this webhook without context,
+    # tell the caller this number is outbound-only and exit.
+    if not event_id:
+        logger.info("Received voice webhook without event_id; treating as inbound and rejecting.")
+        response = VoiceResponse()
+        response.say(
+            "This number is for outbound notifications only. Please contact the main support line for help.",
+            voice="alice",
+        )
+        return create_twiml_response(str(response))
+
+    logger.info(f"Voice call initiated for event {event_id}, answered_by={answered_by}")
     
     response = VoiceResponse()
     
-    # Use Gather to capture DTMF input
+    # Handle machine/voicemail detection
+    if answered_by in ["machine_start", "machine_end_beep", "machine_end_silence", "fax"]:
+        logger.info(f"Voicemail detected for event {event_id}")
+        # Generate shorter voicemail-specific message
+        try:
+            vm_script = await voice_agent.generate_voicemail_script(
+                event_id=event_id,
+                issue_description=script[:100],  # Use part of original script as description
+                escalation_level=1,
+            )
+            response.say(vm_script, voice="alice")
+        except Exception as e:
+            logger.error(f"Voicemail script generation failed: {e}")
+            response.say(
+                "Urgent message from after-hours support. Please call back immediately.",
+                voice="alice"
+            )
+        return create_twiml_response(str(response))
+    
+    # Normal call - use Gather to capture DTMF input
     gather = Gather(
         num_digits=1,
         action=f"/twilio/voice/gather?event_id={event_id}",
@@ -62,6 +98,14 @@ async def handle_voice_gather(
     event_id = request.query_params.get("event_id")
     called = form_data.get("Called")
     caller = form_data.get("From")
+
+    if not event_id:
+        response = VoiceResponse()
+        response.say(
+            "This number is for outbound notifications only. Please contact the main support line for help.",
+            voice="alice",
+        )
+        return create_twiml_response(str(response))
     
     logger.info(f"Voice gather - Event: {event_id}, Digits: {Digits}")
     
@@ -111,7 +155,9 @@ async def handle_voice_status(request: Request):
                     "status": call_status,
                     "eventId": event_id,
                     "escalationLogId": escalation_log_id
-                }
+                },
+                headers={"x-internal-key": settings.internal_api_key},
+                timeout=10.0
             )
     except Exception as e:
         logger.error(f"Failed to notify backend of call status: {str(e)}")
@@ -197,7 +243,9 @@ async def handle_sms_status(request: Request):
                     "smsSid": message_sid,
                     "status": message_status,
                     "eventId": event_id
-                }
+                },
+                headers={"x-internal-key": settings.internal_api_key},
+                timeout=10.0
             )
     except Exception as e:
         logger.error(f"Failed to notify backend of SMS status: {str(e)}")

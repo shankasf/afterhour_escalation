@@ -54,20 +54,36 @@ export class MetricsService {
       avgResponseTime = Math.round(totalTime / eventsWithAck.length / 1000 / 60); // minutes
     }
 
-    // SLA compliance (15 min)
-    const withinSla = eventsWithAck.filter(e => {
+    // SLA compliance (15 min) - count breaches
+    const slaBreaches = eventsWithAck.filter(e => {
       const responseTime = (e.acknowledgedAt!.getTime() - e.receivedAt.getTime()) / 1000 / 60;
-      return responseTime <= 15;
+      return responseTime > 15;
     }).length;
-    const slaRate = eventsWithAck.length > 0 ? Math.round((withinSla / eventsWithAck.length) * 100) : 100;
+
+    // Get current on-call
+    const currentRotation = await this.prisma.onCallRotation.findFirst({
+      where: {
+        startDate: { lte: now },
+        endDate: { gte: now },
+      },
+      include: {
+        primaryUser: { select: { id: true, name: true, phoneNumber: true } },
+      },
+      orderBy: { startDate: 'desc' },
+    });
 
     return {
+      activeEvents: pendingEvents + escalatingEvents,
       todayEvents,
-      pendingEvents,
-      escalatingEvents,
       acknowledgedToday,
-      avgResponseTimeMinutes: avgResponseTime,
-      slaComplianceRate: slaRate,
+      avgAckTimeMinutes: avgResponseTime,
+      slaBreaches,
+      currentOnCall: currentRotation?.primaryUser ? {
+        name: currentRotation.primaryUser.name,
+        phone: currentRotation.primaryUser.phoneNumber || 'N/A',
+        startDate: currentRotation.startDate.toISOString(),
+        endDate: currentRotation.endDate.toISOString(),
+      } : null,
     };
   }
 

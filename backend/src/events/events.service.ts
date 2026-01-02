@@ -76,22 +76,53 @@ export class EventsService {
 
   async createEmailEvent(data: {
     subject: string;
-    body: string;
+    body?: string;
+    rawContent?: string;
     senderEmail: string;
-    senderDomain: string;
-    receivedAt: Date;
+    senderName?: string;
+    senderDomain?: string;
+    receivedAt?: Date;
+    emergencyScore?: number;
+    aiSummary?: string;
+    extractedContext?: Record<string, any>;
   }): Promise<Event> {
     this.logger.log(`Creating email event from ${data.senderEmail}`);
 
-    // Create the event first
+    // Extract domain from email if not provided
+    const senderDomain = data.senderDomain || data.senderEmail.split('@')[1] || '';
+    const body = data.body || data.rawContent || '';
+
+    // If AI triage already done (from poller), use provided score
+    if (data.emergencyScore !== undefined) {
+      const event = await this.prisma.event.create({
+        data: {
+          source: EventSource.email,
+          subject: data.subject,
+          body: body,
+          aiSummary: data.aiSummary,
+          senderEmail: data.senderEmail,
+          senderDomain: senderDomain,
+          receivedAt: data.receivedAt || new Date(),
+          status: data.emergencyScore >= 0.6 ? EventStatus.escalated : EventStatus.pending,
+          emergencyScore: data.emergencyScore,
+          extractedContext: data.extractedContext as any,
+        },
+      });
+
+      this.logger.log(`Created event ${event.id} with score ${data.emergencyScore}`);
+      this.wsGateway.emitNewEvent(event);
+      return event;
+    }
+
+    // Create the event first (legacy path without pre-triage)
     const event = await this.prisma.event.create({
       data: {
         source: EventSource.email,
         subject: data.subject,
-        body: data.body,
+        body: body,
         senderEmail: data.senderEmail,
-        senderDomain: data.senderDomain,
-        receivedAt: data.receivedAt,
+        senderDomain: senderDomain,
+        receivedAt: data.receivedAt || new Date(),
         status: EventStatus.pending,
       },
     });
@@ -100,8 +131,8 @@ export class EventsService {
     try {
       const classification = await this.aiService.classifyEmail({
         subject: data.subject,
-        body: data.body,
-        senderDomain: data.senderDomain,
+        body: body,
+        senderDomain: senderDomain,
       });
 
       // Update event with classification results
@@ -110,6 +141,7 @@ export class EventsService {
         data: {
           emergencyScore: classification.emergencyScore,
           extractedContext: classification.extractedContext as any,
+          aiSummary: (classification as any)?.reasoning,
           status: classification.shouldEscalate 
             ? EventStatus.escalated 
             : EventStatus.pending,
@@ -130,13 +162,20 @@ export class EventsService {
 
   async createDialpadEvent(data: {
     senderPhone: string;
+    senderName?: string;
     voicemailTranscription?: string;
     voicemailUrl?: string;
     receivedAt: Date;
+    callId?: string;
+    state?: string;
+    emergencyScore?: number;
+    priority?: string;
+    triageReasoning?: string;
+    issueSummary?: string;
   }): Promise<Event> {
-    this.logger.log(`Creating Dialpad event from ${data.senderPhone}`);
+    this.logger.log(`Creating Dialpad event from ${data.senderPhone} (state: ${data.state || 'unknown'})`);
 
-    // Dialpad events are always high priority - skip scoring
+    // Dialpad inbound events are always high priority - use provided score or default to 1.0
     const event = await this.prisma.event.create({
       data: {
         source: EventSource.dialpad,
@@ -146,11 +185,21 @@ export class EventsService {
         voicemailUrl: data.voicemailUrl,
         receivedAt: data.receivedAt,
         status: EventStatus.escalated, // Always escalate dialpad events
-        emergencyScore: 1.0, // High confidence
+        emergencyScore: data.emergencyScore ?? 1.0, // High confidence for after-hours calls
+        aiSummary: data.issueSummary || data.triageReasoning,
+        extractedContext: {
+          callId: data.callId,
+          callState: data.state,
+          senderName: data.senderName,
+          priority: data.priority || 'high',
+          triageReasoning: data.triageReasoning,
+        } as any,
       },
     });
 
-    // Emit websocket event
+    this.logger.log(`Created Dialpad event ${event.id} with score ${event.emergencyScore}`);
+    
+    // Emit websocket event for real-time dashboard update
     this.wsGateway.emitNewEvent(event);
 
     return event;
@@ -187,9 +236,53 @@ export class EventsService {
         escalationLogs: {
           orderBy: { attemptNumber: 'desc' },
           take: 1,
+          include: {
+            user: { select: { id: true, name: true, phoneNumber: true } },
+          },
         },
       },
     });
+  }
+
+  async getAcknowledgedEvents(ownerId?: string): Promise<Event[]> {
+    const where: Prisma.EventWhereInput = {
+      status: EventStatus.acknowledged,
+    };
+    
+    if (ownerId) {
+      where.acknowledgedById = ownerId;
+    }
+    
+    return this.prisma.event.findMany({
+      where,
+      orderBy: { acknowledgedAt: 'desc' },
+      include: {
+        acknowledgedBy: {
+          select: { id: true, name: true, email: true },
+        },
+      },
+      take: 10,
+    });
+  }
+
+  async downgradeEvent(id: string, userId: string, reason: string): Promise<Event> {
+    this.logger.log(`Downgrading event ${id} by user ${userId}: ${reason}`);
+    
+    const event = await this.prisma.event.update({
+      where: { id },
+      data: {
+        status: EventStatus.downgraded,
+        extractedContext: {
+          ...(await this.prisma.event.findUnique({ where: { id } }))?.extractedContext as any,
+          downgradeReason: reason,
+          downgradedBy: userId,
+          downgradedAt: new Date().toISOString(),
+        } as any,
+      },
+    });
+    
+    this.wsGateway.emitEventUpdate(event);
+    return event;
   }
 
   async exportToCsv(filters?: {

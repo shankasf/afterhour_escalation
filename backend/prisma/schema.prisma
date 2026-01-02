@@ -150,6 +150,7 @@ model Event {
   source                   EventSource
   subject                  String?     @db.VarChar(500)
   body                     String?
+  aiSummary                String?     @map("ai_summary")
   senderDomain             String?     @map("sender_domain") @db.VarChar(255)
   senderEmail              String?     @map("sender_email") @db.VarChar(255)
   senderPhone              String?     @map("sender_phone") @db.VarChar(50)

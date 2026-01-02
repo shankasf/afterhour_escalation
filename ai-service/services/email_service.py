@@ -19,7 +19,12 @@ from datetime import datetime, timedelta
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
+import pytz
+
 from config import get_settings
+
+# New York timezone for 24-hour email filtering
+NY_TZ = pytz.timezone('America/New_York')
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -274,15 +279,17 @@ class EmailService:
         self, 
         since_hours: int = 24, 
         folder: str = "INBOX",
-        include_read: bool = False
+        include_read: bool = False,
+        timezone: str = "America/New_York"
     ) -> List[Dict[str, Any]]:
         """
-        Fetch emails from the last N hours.
+        Fetch emails from the last N hours based on specified timezone.
         
         Args:
             since_hours: Number of hours to look back
             folder: Email folder to check
             include_read: Whether to include already-read emails
+            timezone: Timezone for calculating the cutoff (default: America/New_York)
             
         Returns:
             List of parsed email dictionaries
@@ -294,8 +301,11 @@ class EmailService:
             mail = self._connect_imap()
             mail.select(folder)
             
-            # Calculate the date threshold
-            since_date = (datetime.now() - timedelta(hours=since_hours)).strftime("%d-%b-%Y")
+            # Calculate the date threshold in the specified timezone
+            tz = pytz.timezone(timezone)
+            now_in_tz = datetime.now(tz)
+            since_date = (now_in_tz - timedelta(hours=since_hours)).strftime("%d-%b-%Y")
+            logger.info(f"Filtering emails since {since_date} ({timezone})")
             
             # Build search criteria
             if include_read:
@@ -367,6 +377,20 @@ class EmailService:
         return await loop.run_in_executor(
             self.executor, 
             lambda: self.fetch_unread_emails(folder, limit)
+        )
+    
+    async def fetch_emails_since_async(
+        self,
+        since_hours: int = 24,
+        folder: str = "INBOX",
+        include_read: bool = False,
+        timezone: str = "America/New_York"
+    ) -> List[Dict[str, Any]]:
+        """Async wrapper for fetch_emails_since."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            self.executor,
+            lambda: self.fetch_emails_since(since_hours, folder, include_read, timezone)
         )
 
     async def fetch_latest_email_async(

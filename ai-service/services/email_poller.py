@@ -87,24 +87,30 @@ def mark_email_processed(uid: str):
 
 async def poll_and_process_emails():
     """
-    Poll for new unread emails, triage them, and create events for emergencies.
+    Poll for new unread emails from the last 24 hours (New York time),
+    triage them, and create events for emergencies.
     """
     global _processed_uids
     
-    logger.info("Polling for new emails...")
+    logger.info("Polling for new emails (last 24 hours, NY time)...")
     
     try:
         email_service = get_email_service()
         triage_agent = EmailTriageAgent()
         
-        # Fetch unread emails
-        emails = await email_service.fetch_unread_emails_async(folder="INBOX", limit=20)
+        # Fetch unread emails from last 24 hours in New York timezone
+        emails = await email_service.fetch_emails_since_async(
+            since_hours=24,
+            folder="INBOX",
+            include_read=False,
+            timezone="America/New_York"
+        )
         
         if not emails:
-            logger.debug("No new unread emails found")
+            logger.debug("No new unread emails in the last 24 hours")
             return
         
-        logger.info(f"Found {len(emails)} unread emails to process")
+        logger.info(f"Found {len(emails)} unread emails from last 24 hours to process")
         
         for email_data in emails:
             uid = email_data.get("uid") or email_data.get("message_id")

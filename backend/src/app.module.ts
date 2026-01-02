@@ -21,7 +21,7 @@ import { MetricsModule } from './metrics/metrics.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '.env',
+      envFilePath: ['.env', '../.env'],
     }),
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([

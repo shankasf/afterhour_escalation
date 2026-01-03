@@ -75,6 +75,13 @@ class VoiceAIAgent:
         source_type: str = "email",
     ) -> Dict[str, Any]:
         """Generate a voice script for an outbound escalation call."""
+        logger.info("="*60)
+        logger.info("[VOICE AGENT] Generating voice script")
+        logger.info(f"  Event ID: {event_id}")
+        logger.info(f"  Issue: {issue_description[:60]}..." if len(issue_description) > 60 else f"  Issue: {issue_description}")
+        logger.info(f"  Escalation Level: {escalation_level}")
+        logger.info(f"  Source Type: {source_type}")
+        
         time_str = self._parse_time(received_at)
 
         if self._agent:
@@ -91,6 +98,11 @@ class VoiceAIAgent:
                 script = output.script
                 if "press 1" not in script.lower():
                     script = script.rstrip(". ") + ". Press 1 to acknowledge and take ownership."
+                
+                logger.info(f"[VOICE AGENT] AI Generated script ({output.estimated_duration_seconds}s):")
+                logger.info(f"  {script[:100]}..." if len(script) > 100 else f"  {script}")
+                logger.info(f"  Urgency Level: {output.urgency_level}")
+                logger.info("="*60)
 
                 return {
                     "script": script,

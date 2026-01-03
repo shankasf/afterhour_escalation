@@ -55,14 +55,29 @@ class TwilioService:
             Dict with call SID and status
         """
         if not self.enabled:
-            logger.warning("Twilio not enabled - simulating call")
+            logger.warning("[TWILIO] Not enabled - simulating call")
             return {
                 "sid": f"SIMULATED_CALL_{event_id}",
                 "status": "simulated",
                 "simulated": True
             }
         
+        logger.info("="*60)
+        logger.info("[TWILIO] Initiating outbound call")
+        logger.info(f"  Event ID: {event_id}")
+        logger.info(f"  Escalation Log ID: {escalation_log_id}")
+        logger.info(f"  Original To Number: {to_number}")
+        
         try:
+            # Use override number if configured (for testing)
+            actual_to_number = settings.escalation_override_number or to_number
+            if settings.escalation_override_number:
+                logger.info(f"  [OVERRIDE] Using test number: {actual_to_number}")
+            else:
+                logger.info(f"  Calling: {actual_to_number}")
+            logger.info(f"  From Number: {settings.twilio_phone_number}")
+            logger.info(f"  Voice Script: {voice_script[:80]}..." if len(voice_script) > 80 else f"  Voice Script: {voice_script}")
+            
             # Build webhook URL with parameters - URL encode the script
             webhook_base = settings.twilio_webhook_url or f"{settings.backend_url}/twilio"
             # Use urlencode for proper URL encoding of parameters
@@ -75,7 +90,7 @@ class TwilioService:
             status_callback = f"{webhook_base}/voice/status?event_id={event_id}&escalation_log_id={escalation_log_id}"
             
             call = self.client.calls.create(
-                to=to_number,
+                to=actual_to_number,
                 from_=settings.twilio_phone_number,
                 url=voice_url,
                 status_callback=status_callback,
@@ -85,7 +100,10 @@ class TwilioService:
                 machine_detection="Enable",  # Detect voicemail
             )
             
-            logger.info(f"Call initiated - SID: {call.sid}, To: {to_number}")
+            logger.info(f"[TWILIO] Call initiated successfully")
+            logger.info(f"  Call SID: {call.sid}")
+            logger.info(f"  Status: {call.status}")
+            logger.info("="*60)
             
             return {
                 "sid": call.sid,
@@ -118,26 +136,42 @@ class TwilioService:
             Dict with message SID and status
         """
         if not self.enabled:
-            logger.warning("Twilio not enabled - simulating SMS")
+            logger.warning("[TWILIO] Not enabled - simulating SMS")
             return {
                 "sid": f"SIMULATED_SMS_{event_id}",
                 "status": "simulated",
                 "simulated": True
             }
         
+        logger.info("="*60)
+        logger.info("[TWILIO] Sending SMS")
+        logger.info(f"  Event ID: {event_id}")
+        logger.info(f"  Original To Number: {to_number}")
+        
         try:
+            # Use override number if configured (for testing)
+            actual_to_number = settings.escalation_override_number or to_number
+            if settings.escalation_override_number:
+                logger.info(f"  [OVERRIDE] Using test number: {actual_to_number}")
+            else:
+                logger.info(f"  Sending to: {actual_to_number}")
+            logger.info(f"  Message: {message[:100]}..." if len(message) > 100 else f"  Message: {message}")
+            
             # Build status callback URL
             webhook_base = settings.twilio_webhook_url or f"{settings.backend_url}/twilio"
             status_callback = f"{webhook_base}/sms/status?event_id={event_id}"
             
             sms = self.client.messages.create(
-                to=to_number,
+                to=actual_to_number,
                 from_=settings.twilio_phone_number,
                 body=message,
                 status_callback=status_callback,
             )
             
-            logger.info(f"SMS sent - SID: {sms.sid}, To: {to_number}")
+            logger.info(f"[TWILIO] SMS sent successfully")
+            logger.info(f"  Message SID: {sms.sid}")
+            logger.info(f"  Status: {sms.status}")
+            logger.info("="*60)
             
             return {
                 "sid": sms.sid,

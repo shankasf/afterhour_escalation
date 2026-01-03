@@ -86,7 +86,11 @@ export class EventsService {
     aiSummary?: string;
     extractedContext?: Record<string, any>;
   }): Promise<Event> {
-    this.logger.log(`Creating email event from ${data.senderEmail}`);
+    this.logger.log('='.repeat(60));
+    this.logger.log('[EVENTS SERVICE] Creating email event');
+    this.logger.log(`  From: ${data.senderEmail}`);
+    this.logger.log(`  Subject: ${data.subject?.substring(0, 60)}...`);
+    this.logger.log(`  Pre-triaged Score: ${data.emergencyScore ?? 'N/A'}`);
 
     // Extract domain from email if not provided
     const senderDomain = data.senderDomain || data.senderEmail.split('@')[1] || '';
@@ -109,7 +113,11 @@ export class EventsService {
         },
       });
 
-      this.logger.log(`Created event ${event.id} with score ${data.emergencyScore}`);
+      this.logger.log(`[EVENTS SERVICE] Event created successfully`);
+      this.logger.log(`  Event ID: ${event.id}`);
+      this.logger.log(`  Score: ${data.emergencyScore}`);
+      this.logger.log(`  Status: ${event.status}`);
+      this.logger.log('='.repeat(60));
       this.wsGateway.emitNewEvent(event);
       return event;
     }

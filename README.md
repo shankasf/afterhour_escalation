@@ -1447,6 +1447,64 @@ Proprietary - All rights reserved
 
 ---
 
+## Viewing Logs (Docker)
+
+Use `docker logs` to view logs for each service separately:
+
+### Direct Docker Commands
+
+```bash
+# AI Service (Python/FastAPI) - Real-time follow
+docker logs -f escalation-ai-service
+
+# Backend (NestJS) - Real-time follow
+docker logs -f escalation-backend
+
+# Frontend (Nginx/React) - Real-time follow
+docker logs -f escalation-frontend
+
+# All services combined
+docker-compose logs -f ai-service backend frontend
+```
+
+### Using the logs.sh Helper Script
+
+```bash
+./logs.sh ai          # AI Service logs
+./logs.sh backend     # Backend logs  
+./logs.sh frontend    # Frontend logs
+./logs.sh all         # All services combined
+
+# Follow in real-time
+./logs.sh ai -f
+./logs.sh backend -f
+
+# Show last N lines
+./logs.sh ai -n 200
+
+# Logs from last 30 minutes
+./logs.sh backend --since 30m
+
+# With timestamps
+./logs.sh ai -f --timestamps
+```
+
+### Log Prefixes by Component
+
+| Service | Component | Log Prefix |
+|---------|-----------|------------|
+| **AI Service** | Email Poller | `[EMAIL POLLER]` |
+| | Triage Agent | `[EMAIL TRIAGE AGENT]` |
+| | Orchestrator | `[ORCHESTRATOR]` |
+| | Voice Agent | `[VOICE AGENT]` |
+| | SMS Agent | `[SMS AGENT]` |
+| | Twilio | `[TWILIO]` |
+| | Pipeline | `[ESCALATION PIPELINE]` |
+| **Backend** | Events Service | `[EVENTS SERVICE]` |
+| | Escalation Service | `[ESCALATION SERVICE]` |
+
+---
+
 ## Support
 
 For issues or questions:

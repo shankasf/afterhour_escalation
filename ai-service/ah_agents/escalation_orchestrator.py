@@ -272,20 +272,38 @@ Provide complete audit trail including reasoning at each step."""
         Returns:
             Complete decision dict with should_escalate, triage results, content, audit
         """
+        logger.info("\n" + "#"*70)
+        logger.info("[ESCALATION ORCHESTRATOR] Processing new event")
+        logger.info("#"*70)
+        logger.info(f"  Event Type: {event_type}")
+        logger.info(f"  Source: {source.value}")
+        logger.info(f"  Content Length: {len(content)} chars")
+        
         metadata = metadata or {}
         received_at = metadata.get("received_at", datetime.now().isoformat())
         force_escalate = metadata.get("force_escalate", False)
+        
+        logger.info(f"  Received At: {received_at}")
+        logger.info(f"  Force Escalate: {force_escalate}")
 
         # Check after-hours window
         can_escalate, window_reason = should_escalate_now(force_escalate)
         after_hours_status = get_after_hours_status()
+        
+        logger.info(f"  After-Hours Window: {after_hours_status}")
+        logger.info(f"  Can Escalate: {can_escalate} ({window_reason})")
+        logger.info("-"*70)
 
         if self.enabled:
             try:
+                logger.info("[ORCHESTRATOR] Using AI multi-agent system...")
                 result = await self._ai_process(event_type, content, source, metadata)
+                
+                logger.info(f"[ORCHESTRATOR] AI Result: should_escalate={result.get('should_escalate')}")
                 
                 # If outside after-hours window and not forced, don't escalate
                 if not can_escalate and result.get("should_escalate"):
+                    logger.warning(f"[ORCHESTRATOR] Escalation BLOCKED: {window_reason}")
                     result["should_escalate"] = False
                     result["audit_notes"] = (
                         f"{result.get('audit_notes', '')} | "
@@ -294,11 +312,14 @@ Provide complete audit trail including reasoning at each step."""
                     result["after_hours_blocked"] = True
                 
                 result["after_hours"] = after_hours_status
+                logger.info("#"*70 + "\n")
                 return result
             except Exception as e:
-                logger.error(f"AI orchestration failed: {str(e)}")
+                logger.error(f"[ORCHESTRATOR] AI orchestration failed: {str(e)}")
+                logger.info("[ORCHESTRATOR] Falling back to rule-based processing")
 
         # Fallback to rule-based processing
+        logger.info("[ORCHESTRATOR] Using rule-based fallback processing...")
         return self._fallback_process(event_type, content, source, metadata)
 
     async def _ai_process(
@@ -310,11 +331,24 @@ Provide complete audit trail including reasoning at each step."""
     ) -> Dict[str, Any]:
         """Process event using multi-agent AI system."""
         from agents import Runner
+        
+        logger.info("[TRIAGE AGENT] Starting AI triage analysis...")
 
         # Step 1: Triage the event
         triage_prompt = self._build_triage_prompt(event_type, content, source, metadata)
+        logger.info(f"[TRIAGE AGENT] Sending to AI model: {_MODEL}")
         triage_result = await Runner.run(self._triage_agent, triage_prompt)
         triage_output: TriageOutput = triage_result.final_output
+        
+        logger.info("[TRIAGE AGENT] Analysis complete:")
+        logger.info(f"  Decision: {triage_output.decision.value}")
+        logger.info(f"  Priority: {triage_output.priority.value}")
+        logger.info(f"  Emergency Score: {triage_output.emergency_score:.2f}")
+        logger.info(f"  Issue Summary: {triage_output.issue_summary[:80]}..." if len(triage_output.issue_summary) > 80 else f"  Issue Summary: {triage_output.issue_summary}")
+        logger.info(f"  Location: {triage_output.location}")
+        logger.info(f"  Equipment: {triage_output.equipment}")
+        logger.info(f"  Safety Critical: {triage_output.is_safety_critical}")
+        logger.info(f"  Reasoning: {triage_output.reasoning[:100]}..." if len(triage_output.reasoning) > 100 else f"  Reasoning: {triage_output.reasoning}")
 
         # Dialpad events always escalate regardless of content
         should_escalate = (
@@ -322,6 +356,15 @@ Provide complete audit trail including reasoning at each step."""
             or triage_output.decision == TriageDecision.ESCALATE
             or triage_output.emergency_score >= 0.6
         )
+        
+        logger.info("-"*50)
+        logger.info(f"[ORCHESTRATOR] Escalation Decision: {'YES - ESCALATING' if should_escalate else 'NO - Not escalating'}")
+        if source == EventSource.DIALPAD:
+            logger.info("  Reason: Dialpad event - auto-escalate")
+        elif triage_output.emergency_score >= 0.6:
+            logger.info(f"  Reason: Score {triage_output.emergency_score:.2f} >= 0.6 threshold")
+        else:
+            logger.info(f"  Reason: Score {triage_output.emergency_score:.2f} < 0.6 threshold")
 
         result = {
             "should_escalate": should_escalate,
@@ -341,6 +384,8 @@ Provide complete audit trail including reasoning at each step."""
 
         # Step 2: Generate escalation content if needed
         if should_escalate:
+            logger.info("-"*50)
+            logger.info("[MESSAGE AGENT] Generating escalation content...")
             try:
                 content_prompt = self._build_content_prompt(
                     triage_output.issue_summary,
@@ -349,6 +394,10 @@ Provide complete audit trail including reasoning at each step."""
                 )
                 content_result = await Runner.run(self._message_agent, content_prompt)
                 content_output: EscalationContent = content_result.final_output
+                
+                logger.info("[MESSAGE AGENT] Content generated:")
+                logger.info(f"  Voice Script: {content_output.voice_script[:80]}...")
+                logger.info(f"  SMS Message: {content_output.sms_message}")
 
                 result["escalation_content"] = {
                     "voice_script": content_output.voice_script,
@@ -356,7 +405,8 @@ Provide complete audit trail including reasoning at each step."""
                     "email_subject": content_output.email_subject,
                 }
             except Exception as e:
-                logger.error(f"Message generation failed: {str(e)}")
+                logger.error(f"[MESSAGE AGENT] Generation failed: {str(e)}")
+                logger.info("[MESSAGE AGENT] Using fallback templates")
                 # Use fallback templates
                 result["escalation_content"] = self._generate_fallback_content(
                     triage_output.issue_summary, metadata.get("received_at")

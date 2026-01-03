@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     twilio_phone_number: str = ""
     twilio_webhook_url: str = ""
     
+    # Override number for testing - all escalation calls/SMS go here
+    escalation_override_number: str = ""
+    
     # Dialpad
     dialpad_api_key: str = ""
     dialpad_webhook_secret: str = ""

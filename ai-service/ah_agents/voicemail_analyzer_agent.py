@@ -92,7 +92,14 @@ class VoicemailAnalyzerAgent:
 
     async def analyze(self, transcription: str, from_number: Optional[str] = None) -> Dict[str, Any]:
         """Analyze a voicemail transcript and return emergency assessment."""
+        logger.info("="*60)
+        logger.info("[VOICEMAIL ANALYZER] Starting analysis")
+        logger.info(f"  From Number: {from_number}")
+        logger.info(f"  Transcript Length: {len(transcription) if transcription else 0} chars")
+        
         if not transcription or not transcription.strip():
+            logger.info("[VOICEMAIL ANALYZER] No transcript - defaulting to high priority")
+            logger.info("="*60)
             return {
                 "emergency_score": 0.8,
                 "reasoning": "No transcript available - defaulting to high priority",
@@ -108,8 +115,15 @@ class VoicemailAnalyzerAgent:
                 if from_number:
                     prompt += f"\n\nCaller: {from_number}"
 
+                logger.info("[VOICEMAIL ANALYZER] Sending to AI for analysis...")
                 result = await Runner.run(self._agent, prompt)
                 output: VoicemailOutput = result.final_output
+                
+                logger.info("[VOICEMAIL ANALYZER] AI Analysis complete:")
+                logger.info(f"  Emergency Score: {output.emergency_score:.2f}")
+                logger.info(f"  Reasoning: {output.reasoning[:80]}..." if len(output.reasoning) > 80 else f"  Reasoning: {output.reasoning}")
+                logger.info(f"  Recommended Action: {output.recommended_action}")
+                logger.info("="*60)
 
                 return {
                     "emergency_score": output.emergency_score,
@@ -118,7 +132,8 @@ class VoicemailAnalyzerAgent:
                     "recommended_action": output.recommended_action,
                 }
             except Exception as e:
-                logger.error(f"AI analysis failed: {e}")
+                logger.error(f"[VOICEMAIL ANALYZER] AI analysis failed: {e}")
+                logger.info("[VOICEMAIL ANALYZER] Falling back to keyword analysis")
 
         # Fallback to keyword scoring
         return self._keyword_analyze(transcription, from_number)

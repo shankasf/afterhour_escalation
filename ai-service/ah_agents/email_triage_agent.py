@@ -89,9 +89,18 @@ class EmailTriageAgent:
 
     async def classify(self, subject: str, body: str, sender_domain: str = "") -> Dict[str, Any]:
         """Classify an email and return emergency score with context."""
+        logger.info("="*60)
+        logger.info("[EMAIL TRIAGE AGENT] Starting classification")
+        logger.info(f"  Subject: {subject[:80]}..." if len(subject) > 80 else f"  Subject: {subject}")
+        logger.info(f"  Sender Domain: {sender_domain}")
+        logger.info(f"  Body Length: {len(body)} chars")
+        
         full_text = f"{subject}\n{body}".lower()
         keyword_score = self._keyword_score(full_text)
         indicators = self._extract_indicators(full_text)
+        
+        logger.info(f"  Keyword Score: {keyword_score:.2f}")
+        logger.info(f"  Urgency Indicators: {indicators}")
 
         if self._agent:
             try:
@@ -109,6 +118,13 @@ class EmailTriageAgent:
 
                 # Combine AI and keyword scores
                 combined_score = (output.score * 0.6) + (keyword_score * 0.4)
+                
+                logger.info(f"  AI Score: {output.score:.2f}")
+                logger.info(f"  Combined Score: {combined_score:.2f}")
+                logger.info(f"  AI Reasoning: {output.reasoning[:100]}..." if len(output.reasoning) > 100 else f"  AI Reasoning: {output.reasoning}")
+                logger.info(f"  Safety Critical: {output.is_safety_critical}")
+                logger.info("[EMAIL TRIAGE AGENT] Classification complete")
+                logger.info("="*60)
 
                 return {
                     "emergency_score": min(1.0, combined_score),
@@ -123,9 +139,12 @@ class EmailTriageAgent:
                     "ai_score": output.score,
                 }
             except Exception as e:
-                logger.error(f"AI classification failed: {e}")
+                logger.error(f"[EMAIL TRIAGE AGENT] AI classification failed: {e}")
+                logger.info("[EMAIL TRIAGE AGENT] Falling back to keyword-only scoring")
 
         # Fallback to keyword-only
+        logger.info(f"[EMAIL TRIAGE AGENT] Keyword-only result: score={keyword_score:.2f}")
+        logger.info("="*60)
         return {
             "emergency_score": keyword_score,
             "extracted_context": self._extract_context(full_text),

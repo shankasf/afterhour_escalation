@@ -18,24 +18,30 @@ class EscalationAgent:
         self.backend_url = settings.backend_url
 
     async def get_escalation_ladder(self) -> List[Dict[str, Any]]:
+        logger.info("[ESCALATION AGENT] Fetching escalation ladder from backend...")
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(f"{self.backend_url}/api/escalation/ladder", timeout=10.0)
                 if response.status_code == 200:
-                    return response.json()
+                    ladder = response.json()
+                    logger.info(f"[ESCALATION AGENT] Ladder retrieved: {len(ladder)} contacts")
+                    return ladder
         except Exception as e:
-            logger.error(f"Failed to get escalation ladder: {str(e)}")
+            logger.error(f"[ESCALATION AGENT] Failed to get escalation ladder: {str(e)}")
 
         return []
 
     async def start_escalation(self, event_id: str) -> Dict[str, Any]:
+        logger.info(f"[ESCALATION AGENT] Starting escalation for event: {event_id}")
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(f"{self.backend_url}/api/escalation/{event_id}/start", timeout=30.0)
                 if response.status_code == 200:
-                    return response.json()
+                    result = response.json()
+                    logger.info(f"[ESCALATION AGENT] Escalation started successfully")
+                    return result
         except Exception as e:
-            logger.error(f"Failed to start escalation: {str(e)}")
+            logger.error(f"[ESCALATION AGENT] Failed to start escalation: {str(e)}")
         return {"success": False, "error": "Failed to start escalation"}
 
     async def notify_backend_call_status(self, call_sid: str, status: str, event_id: str) -> None:

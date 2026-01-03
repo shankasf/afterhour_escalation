@@ -60,6 +60,11 @@ class SmsAgent:
         self, event_id: str, issue_description: str, received_at: str = ""
     ) -> Dict[str, Any]:
         """Generate an SMS message for escalation."""
+        logger.info("="*60)
+        logger.info("[SMS AGENT] Generating SMS message")
+        logger.info(f"  Event ID: {event_id}")
+        logger.info(f"  Issue: {issue_description[:60]}..." if len(issue_description) > 60 else f"  Issue: {issue_description}")
+        
         time_str = self._parse_time(received_at)
 
         if self._agent:
@@ -78,6 +83,10 @@ class SmsAgent:
                 # Ensure ACK instruction
                 if "reply ack" not in message.lower():
                     message = message + " Reply ACK to accept."
+                
+                logger.info(f"[SMS AGENT] AI Generated message:")
+                logger.info(f"  {message}")
+                logger.info("="*60)
 
                 return {"message": message, "generated_by": "ai"}
             except Exception as e:

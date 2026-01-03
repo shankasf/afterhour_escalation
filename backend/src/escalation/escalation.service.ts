@@ -33,18 +33,28 @@ export class EscalationService {
   ) {}
 
   async startEscalation(eventId: string): Promise<void> {
-    this.logger.log(`Starting escalation for event ${eventId}`);
+    this.logger.log('='.repeat(70));
+    this.logger.log(`[ESCALATION SERVICE] Starting escalation for event ${eventId}`);
+    this.logger.log('='.repeat(70));
 
     const event = await this.prisma.event.findUnique({
       where: { id: eventId },
     });
 
     if (!event) {
+      this.logger.error(`[ESCALATION SERVICE] Event ${eventId} not found`);
       throw new Error(`Event ${eventId} not found`);
     }
+    
+    this.logger.log(`[ESCALATION SERVICE] Event found:`);
+    this.logger.log(`  Subject: ${event.subject?.substring(0, 60)}...`);
+    this.logger.log(`  Score: ${event.emergencyScore}`);
 
     // Build escalation ladder
+    this.logger.log('[ESCALATION SERVICE] Building escalation ladder...');
     const ladder = await this.buildEscalationLadder();
+    this.logger.log(`[ESCALATION SERVICE] Ladder built with ${ladder.length} contacts:`);
+    ladder.forEach((c, i) => this.logger.log(`  ${i + 1}. ${c.name} (${c.contactType}) - ${c.phoneNumber}`));
     
     // Save ladder snapshot to event
     await this.prisma.event.update({
@@ -158,7 +168,12 @@ export class EscalationService {
       const contact = ladder[index];
       const attemptNumber = index + 1;
 
-      this.logger.log(`Escalating event ${eventId} to ${contact.name} (attempt ${attemptNumber})`);
+      this.logger.log('-'.repeat(50));
+      this.logger.log(`[ESCALATION SERVICE] Escalating to contact #${attemptNumber}`);
+      this.logger.log(`  Name: ${contact.name}`);
+      this.logger.log(`  Phone: ${contact.phoneNumber}`);
+      this.logger.log(`  Type: ${contact.contactType}`);
+      this.logger.log(`  Event ID: ${eventId}`);
 
       // Create escalation log entry
       const escalationLog = await this.prisma.escalationLog.create({
@@ -182,6 +197,7 @@ export class EscalationService {
 
       try {
         // Call AI service to send call and SMS simultaneously
+        this.logger.log('[ESCALATION SERVICE] Calling AI service to send notifications...');
         const result = await this.aiService.sendEscalation({
           eventId,
           escalationLogId: escalationLog.id,
@@ -191,6 +207,10 @@ export class EscalationService {
           },
           event: await this.prisma.event.findUnique({ where: { id: eventId } }),
         });
+        
+        this.logger.log('[ESCALATION SERVICE] AI service response:');
+        this.logger.log(`  Call SID: ${result.callSid}`);
+        this.logger.log(`  SMS SID: ${result.smsSid}`);
 
         // Update escalation log with call/SMS SIDs
         await this.prisma.escalationLog.update({
@@ -205,13 +225,14 @@ export class EscalationService {
 
         // Set timeout for acknowledgment
         const timeoutMs = await this.getAckTimeoutMs();
+        this.logger.log(`[ESCALATION SERVICE] Setting ACK timeout: ${timeoutMs / 1000}s`);
         const timeout = setTimeout(async () => {
           await this.handleAckTimeout(eventId, escalationLog.id, ladder, index);
         }, timeoutMs);
 
-        this.activeEscalations.set(eventId, timeout);
+        this.activeEscalations.set(eventId);
       } catch (error) {
-        this.logger.error(`Failed to escalate to ${contact.name}: ${error.message}`);
+        this.logger.error(`[ESCALATION SERVICE] Failed to escalate to ${contact.name}: ${error.message}`);
 
         await this.prisma.escalationLog.update({
           where: { id: escalationLog.id },
@@ -240,7 +261,10 @@ export class EscalationService {
     ladder: EscalationContact[],
     currentIndex: number,
   ): Promise<void> {
-    this.logger.log(`ACK timeout for event ${eventId}`);
+    this.logger.warn('-'.repeat(50));
+    this.logger.warn(`[ESCALATION SERVICE] ACK timeout for event ${eventId}`);
+    this.logger.warn(`  No acknowledgment received from contact #${currentIndex + 1}`);
+    this.logger.warn(`  Moving to next contact in ladder...`);
 
     // Check if already acknowledged
     const event = await this.prisma.event.findUnique({
@@ -248,6 +272,7 @@ export class EscalationService {
     });
 
     if (event?.status === EventStatus.acknowledged) {
+      this.logger.log('[ESCALATION SERVICE] Event already acknowledged, stopping escalation');
       return; // Already acknowledged
     }
 
@@ -287,13 +312,19 @@ export class EscalationService {
     userId: string,
     method: 'sms' | 'call',
   ): Promise<void> {
-    this.logger.log(`Acknowledgment received for event ${eventId} via ${method}`);
+    this.logger.log('*'.repeat(70));
+    this.logger.log(`[ESCALATION SERVICE] *** ACKNOWLEDGMENT RECEIVED ***`);
+    this.logger.log(`  Event ID: ${eventId}`);
+    this.logger.log(`  User ID: ${userId}`);
+    this.logger.log(`  Method: ${method.toUpperCase()}`);
+    this.logger.log('*'.repeat(70));
 
     // Clear timeout
     const timeout = this.activeEscalations.get(eventId);
     if (timeout) {
       clearTimeout(timeout);
       this.activeEscalations.delete(eventId);
+      this.logger.log('[ESCALATION SERVICE] Cleared ACK timeout - stopping escalation ladder');
     }
 
     // Update event

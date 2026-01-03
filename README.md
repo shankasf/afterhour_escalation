@@ -26,6 +26,7 @@ A production-grade, AI-powered emergency escalation system designed for property
 11. [Integrations](#integrations)
 12. [Troubleshooting](#troubleshooting)
 13. [Development Guide](#development-guide)
+14. [Recent Changes](#recent-changes-v110)
 
 ---
 
@@ -1396,6 +1397,47 @@ After database seeding:
 | Role | Email | Password |
 |------|-------|----------|
 | Admin | admin@example.com | admin123 |
+
+---
+
+## Recent Changes (v1.1.0)
+
+### AI Service Refactoring
+
+The AI service agents have been significantly simplified to follow the OpenAI Agents SDK pattern strictly:
+
+**Before:**
+- 4,710 lines of code across multiple agent files
+- Complex wrapper classes and initialization patterns
+- Unused specialist agents and backend API tools
+
+**After:**
+- 2,004 lines of code (57% reduction)
+- Clean `Agent()` + `Runner.run()` pattern
+- All agents have keyword-based fallback when OpenAI is unavailable
+
+**Removed unused code:**
+- `head_coordinator_agent.py`
+- `specialist_agents/` folder
+- `backend_api_tools/` folder
+- `data_models/` folder
+
+### Bug Fixes
+
+| File | Issue | Resolution |
+|------|-------|------------|
+| `ai-service/routes/escalate.py` | Variable shadowing (`sms_result`) | Renamed to `sms_send_result` |
+| `ai-service/routes/twilio_webhooks.py` | Unused `VoiceResponse()` object | Removed unnecessary code |
+| `backend/src/escalation/escalation.internal.controller.ts` | Empty foreign keys allowed | Added validation with proper error handling |
+| `backend/src/email-tracking/email-tracking.controller.ts` | Double path prefix (`/api/api/`) | Fixed controller decorator |
+| `ai-service/ah_agents/agent_tools.py` | Wrong rotation endpoint | Fixed to use `/api/escalation/rotation/current` |
+
+### Integration Verification
+
+All AI service to backend integrations have been verified:
+- 18 endpoints confirmed working with `x-internal-key` authentication
+- Frontend confirmed fetching real data (no mock/dummy data)
+- WebSocket real-time updates verified
 
 ---
 

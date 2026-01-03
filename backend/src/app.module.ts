@@ -16,6 +16,8 @@ import { HealthModule } from './health/health.module';
 import { WebsocketModule } from './websocket/websocket.module';
 import { AiServiceModule } from './ai-service/ai-service.module';
 import { MetricsModule } from './metrics/metrics.module';
+import { EmailTrackingModule } from './email-tracking/email-tracking.module';
+import { AppConfigModule } from './common/config/app-config.module';
 
 @Module({
   imports: [
@@ -31,6 +33,7 @@ import { MetricsModule } from './metrics/metrics.module';
       },
     ]),
     PrismaModule,
+    AppConfigModule,
     AuthModule,
     UsersModule,
     EventsModule,
@@ -43,6 +46,7 @@ import { MetricsModule } from './metrics/metrics.module';
     WebsocketModule,
     AiServiceModule,
     MetricsModule,
+    EmailTrackingModule,
   ],
 })
 export class AppModule {}

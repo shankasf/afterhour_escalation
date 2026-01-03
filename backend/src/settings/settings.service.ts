@@ -18,6 +18,11 @@ export class SettingsService {
     return setting?.value || null;
   }
 
+  // Alias for getSetting for convenience
+  async get(key: string): Promise<string | null> {
+    return this.getSetting(key);
+  }
+
   async updateSetting(
     key: string,
     value: string,

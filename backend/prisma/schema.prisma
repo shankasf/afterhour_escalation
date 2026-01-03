@@ -100,14 +100,15 @@ model User {
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   // Relations
-  primaryRotations     OnCallRotation[]    @relation("PrimaryOnCall")
-  secondaryRotations   OnCallRotation[]    @relation("SecondaryOnCall")
-  escalationContacts   EscalationContact[]
-  escalationLogs       EscalationLog[]
-  acknowledgedEvents   Event[]             @relation("AcknowledgedBy")
-  acknowledgments      Acknowledgment[]
-  resolvedAlerts       AdminAlert[]        @relation("ResolvedBy")
-  updatedSettings      SystemSetting[]
+  primaryRotations       OnCallRotation[]         @relation("PrimaryOnCall")
+  secondaryRotations     OnCallRotation[]         @relation("SecondaryOnCall")
+  escalationContacts     EscalationContact[]
+  escalationLogs         EscalationLog[]
+  acknowledgedEvents     Event[]                  @relation("AcknowledgedBy")
+  acknowledgments        Acknowledgment[]
+  resolvedAlerts         AdminAlert[]             @relation("ResolvedBy")
+  updatedSettings        SystemSetting[]
+  escalationLadderConfig EscalationLadderConfig[]
 
   @@map("users")
 }
@@ -320,4 +321,37 @@ model EmailPollingStatus {
   updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("email_polling_status")
+}
+
+model ProcessedEmailUid {
+  id          String   @id @default(uuid())
+  uid         String   @unique @db.VarChar(255)
+  processedAt DateTime @default(now()) @map("processed_at") @db.Timestamptz(6)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([processedAt])
+  @@map("processed_email_uids")
+}
+
+// =====================================================
+// Escalation Ladder Configuration (Data-Driven)
+// =====================================================
+
+model EscalationLadderConfig {
+  id              String   @id @default(uuid())
+  level           Int      @unique
+  role            String   @db.VarChar(100)
+  userId          String?  @map("user_id")
+  timeoutSeconds  Int      @default(120) @map("timeout_seconds")
+  isRotation      Boolean  @default(false) @map("is_rotation")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([level])
+  @@index([isActive])
+  @@map("escalation_ladder_config")
 }

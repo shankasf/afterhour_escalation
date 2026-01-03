@@ -129,10 +129,18 @@ export class EventsController {
   }
 
   @Get(':id')
-  @UseGuards(AuthGuard('jwt'))
+  @ApiHeader({ name: 'x-internal-key', required: false })
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get event by ID' })
-  async findOne(@Param('id') id: string) {
+  async findOne(
+    @Param('id') id: string,
+    @Headers('x-internal-key') internalKey?: string,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    // Allow internal service calls or JWT auth
+    if (!this.isInternalRequest(internalKey) && !authHeader) {
+      throw new UnauthorizedException('Authorization required');
+    }
     return this.eventsService.findById(id);
   }
 

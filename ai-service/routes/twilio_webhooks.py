@@ -175,8 +175,7 @@ async def handle_incoming_sms(request: Request):
     body = form_data.get("Body", "").strip()
     
     logger.info(f"Incoming SMS from {from_number}: {body}")
-    
-    response = VoiceResponse()  # Using VoiceResponse for MessagingResponse
+
     from twilio.twiml.messaging_response import MessagingResponse
     response = MessagingResponse()
     

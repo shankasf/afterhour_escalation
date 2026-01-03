@@ -126,4 +126,64 @@ export class AcknowledgmentService {
       notes: data.notes,
     });
   }
+
+  /**
+   * Create acknowledgment using contact name (for AI service integration).
+   * This method accepts the format sent by the AI service.
+   */
+  async createAcknowledgmentByName(data: {
+    eventId: string;
+    acknowledgedBy: string;
+    method: string;
+    timestamp?: string;
+  }) {
+    this.logger.log(`Creating acknowledgment by name for event ${data.eventId}`);
+
+    // Find user by name
+    const user = await this.prisma.user.findFirst({
+      where: { name: data.acknowledgedBy },
+    });
+
+    let userId: string;
+
+    if (user) {
+      userId = user.id;
+    } else {
+      // Try to find from active escalation logs
+      const event = await this.prisma.event.findUnique({
+        where: { id: data.eventId },
+        include: {
+          escalationLogs: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            include: { user: true },
+          },
+        },
+      });
+
+      if (event?.escalationLogs?.[0]?.userId) {
+        userId = event.escalationLogs[0].userId;
+      } else {
+        throw new Error(`Could not find user for acknowledgment: ${data.acknowledgedBy}`);
+      }
+    }
+
+    // Map method string to AckMethod enum
+    const method = data.method === 'call_keypress' || data.method === 'call'
+      ? AckMethod.call
+      : AckMethod.sms;
+
+    const ack = await this.createAcknowledgment({
+      eventId: data.eventId,
+      userId,
+      method,
+      notes: `Acknowledged by ${data.acknowledgedBy} via ${data.method}`,
+    });
+
+    return {
+      success: true,
+      acknowledgedAt: ack.acknowledgedAt.toISOString(),
+      owner: data.acknowledgedBy,
+    };
+  }
 }

@@ -108,7 +108,7 @@ def create_escalation_tools():
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
-                    f"{settings.backend_url}/api/rotation/current",
+                    f"{settings.backend_url}/api/escalation/rotation/current",
                     headers={"x-internal-key": settings.internal_api_key},
                     timeout=10.0,
                 )

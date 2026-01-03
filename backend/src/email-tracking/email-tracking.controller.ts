@@ -8,7 +8,7 @@ import { Controller, Get, Post, Body, Headers, UnauthorizedException, Logger } f
 import { EmailTrackingService } from './email-tracking.service';
 import { ConfigService } from '@nestjs/config';
 
-@Controller('api/email-tracking')
+@Controller('email-tracking')
 export class EmailTrackingController {
   private readonly logger = new Logger(EmailTrackingController.name);
 

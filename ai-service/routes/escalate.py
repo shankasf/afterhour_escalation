@@ -112,12 +112,12 @@ async def send_escalation(request: EscalateRequest):
         
         try:
             # Send SMS
-            sms_result = await twilio_service.send_sms(
+            sms_send_result = await twilio_service.send_sms(
                 to_number=contact_phone,
                 message=sms_result["message"],
                 event_id=request.eventId
             )
-            sms_sid = sms_result.get("sid")
+            sms_sid = sms_send_result.get("sid")
         except Exception as e:
             logger.error(f"SMS failed: {str(e)}")
         

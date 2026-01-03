@@ -285,12 +285,24 @@ Configuration is data-driven, not hard-coded:
 
 #### AI Service Components (FastAPI)
 
+All AI agents follow the OpenAI Agents SDK pattern:
+```python
+from agents import Agent, Runner
+
+agent = Agent(name="...", instructions="...", model="gpt-5.2")
+result = await Runner.run(agent, prompt)
+```
+
 | Component | Responsibility |
 |-----------|----------------|
 | `EscalationOrchestrator` | Coordinates multi-agent AI workflow |
-| `EmailTriageAgent` | Classifies emails and assigns emergency scores |
-| `VoiceAIAgent` | Generates voice call scripts (35-40 words) |
+| `EmailTriageAgent` | Classifies emails and assigns emergency scores (0-1) |
+| `VoiceAIAgent` | Generates voice call scripts (35-50 words) |
 | `SmsAgent` | Generates SMS messages (<160 characters) |
+| `VoicemailAnalyzerAgent` | Analyzes Dialpad voicemail transcripts |
+| `AckMonitorAgent` | Handles acknowledgment processing |
+| `DialpadAgent` | Processes Dialpad webhook events |
+| `EscalationAgent` | Manages escalation lifecycle |
 | `EmailPoller` | Polls IMAP for new emails every 30 seconds |
 | `TwilioService` | Makes outbound calls and sends SMS |
 | `DialpadService` | Processes incoming Dialpad webhooks |
@@ -647,12 +659,17 @@ afterhours_escalation/
 │   └── Dockerfile
 │
 ├── ai-service/                        # FastAPI AI Service
-│   ├── ah_agents/                     # AI Agents
-│   │   ├── email_triage_agent.py      # Email classification
+│   ├── ah_agents/                     # AI Agents (OpenAI Agents SDK pattern)
+│   │   ├── __init__.py                # Public exports
+│   │   ├── email_triage_agent.py      # Email classification (AI + keyword fallback)
+│   │   ├── voice_agent.py             # Voice script generation
+│   │   ├── sms_agent.py               # SMS message generation
+│   │   ├── voicemail_analyzer_agent.py # Voicemail transcript analysis
+│   │   ├── ack_monitor_agent.py       # Acknowledgment handling
+│   │   ├── dialpad_agent.py           # Dialpad event processing
+│   │   ├── escalation_agent.py        # Escalation management
 │   │   ├── escalation_orchestrator.py # Multi-agent coordinator
-│   │   ├── sms_agent.py               # SMS generation
-│   │   ├── dialpad_agent.py           # Dialpad processing
-│   │   └── escalation_agent.py        # Escalation logic
+│   │   └── agent_tools.py             # @function_tool decorated tools
 │   │
 │   ├── services/                      # External service integrations
 │   │   ├── twilio_service.py          # Twilio calls/SMS
@@ -1344,8 +1361,25 @@ npx prisma migrate reset
    - Use repository pattern for data access
 
 2. **AI Agent:**
-   - Create agent class in `ah_agents/`
-   - Register in DI container
+   - Create agent class in `ah_agents/` following OpenAI Agents SDK pattern:
+     ```python
+     from agents import Agent, Runner
+
+     class MyAgent:
+         def __init__(self):
+             self._agent = Agent(
+                 name="My Agent",
+                 instructions="...",
+                 model="gpt-5.2",
+                 output_type=MyOutputModel,  # Optional Pydantic model
+             )
+
+         async def process(self, input: str) -> dict:
+             result = await Runner.run(self._agent, input)
+             return result.final_output
+     ```
+   - Add fallback logic for when OpenAI is unavailable
+   - Export from `ah_agents/__init__.py`
    - Add route handler if API endpoint needed
 
 3. **Frontend Page:**

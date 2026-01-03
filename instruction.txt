@@ -1,0 +1,123 @@
+# =========================
+# OpenAI Agents SDK – All Core Examples
+# =========================
+
+# --------
+# Hello World (Sync)
+# --------
+from agents import Agent, Runner
+
+agent = Agent(
+    name="Assistant",
+    instructions="You are a helpful assistant."
+)
+
+result = Runner.run_sync(
+    agent,
+    "Write a haiku about recursion in programming."
+)
+print("Hello World Output:\n", result.final_output)
+
+
+# --------
+# Handoffs Example (Async)
+# --------
+import asyncio
+
+spanish_agent = Agent(
+    name="Spanish agent",
+    instructions="You only speak Spanish."
+)
+
+english_agent = Agent(
+    name="English agent",
+    instructions="You only speak English."
+)
+
+triage_agent = Agent(
+    name="Triage agent",
+    instructions="Handoff to the appropriate agent based on the language of the request.",
+    handoffs=[spanish_agent, english_agent],
+)
+
+
+async def handoff_example():
+    result = await Runner.run(
+        triage_agent,
+        input="Hola, ¿cómo estás?"
+    )
+    print("Handoff Output:\n", result.final_output)
+
+
+# --------
+# Function Tool Example
+# --------
+from agents import function_tool
+
+
+@function_tool
+def get_weather(city: str) -> str:
+    return f"The weather in {city} is sunny."
+
+weather_agent = Agent(
+    name="Weather agent",
+    instructions="You are a helpful agent.",
+    tools=[get_weather],
+)
+
+
+async def function_example():
+    result = await Runner.run(
+        weather_agent,
+        input="What's the weather in Tokyo?"
+    )
+    print("Function Tool Output:\n", result.final_output)
+
+
+# --------
+# Session Memory Example (SQLite)
+# --------
+from agents import SQLiteSession
+
+session_agent = Agent(
+    name="Session Assistant",
+    instructions="Reply very concisely."
+)
+
+session = SQLiteSession("conversation_123", "conversations.db")
+
+
+async def session_example():
+    result1 = await Runner.run(
+        session_agent,
+        "What city is the Golden Gate Bridge in?",
+        session=session,
+    )
+    print(result1.final_output)
+
+    result2 = await Runner.run(
+        session_agent,
+        "What state is it in?",
+        session=session,
+    )
+    print(result2.final_output)
+
+    result3 = Runner.run_sync(
+        session_agent,
+        "What's the population?",
+        session=session,
+    )
+    print(result3.final_output)
+
+
+# --------
+# Run all async examples
+# --------
+async def main():
+    await handoff_example()
+    await function_example()
+    await session_example()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

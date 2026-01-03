@@ -76,3 +76,41 @@ export class AcknowledgmentController {
     return this.ackService.downgradeEvent(eventId, body.userId, body.reason);
   }
 }
+
+
+/**
+ * Singular path controller for AI service integration.
+ * AI service calls POST /api/acknowledgment (singular) with different field names.
+ */
+@ApiTags('acknowledgment')
+@Controller('acknowledgment')
+export class AcknowledgmentInternalController {
+  constructor(
+    private ackService: AcknowledgmentService,
+    private configService: ConfigService,
+  ) {}
+
+  private isInternalRequest(apiKey: string | undefined): boolean {
+    const internalKey = this.configService.get<string>('INTERNAL_API_KEY') || 'internal-service-key';
+    return apiKey === internalKey;
+  }
+
+  @Post()
+  @ApiOperation({ summary: 'Create acknowledgment (AI service format)' })
+  @ApiHeader({ name: 'x-internal-key', required: true })
+  async createFromAiService(
+    @Body() body: {
+      eventId: string;
+      acknowledgedBy: string;
+      method: string;
+      timestamp?: string;
+    },
+    @Headers('x-internal-key') internalKey?: string,
+  ) {
+    if (!this.isInternalRequest(internalKey)) {
+      throw new UnauthorizedException('Internal key required');
+    }
+
+    return this.ackService.createAcknowledgmentByName(body);
+  }
+}

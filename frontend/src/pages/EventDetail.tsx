@@ -8,10 +8,177 @@ import {
     CheckCircle,
     User,
     MessageSquare,
+    Clock,
+    XCircle,
+    PhoneCall,
+    PhoneOff,
+    PhoneMissed,
+    CheckCircle2,
+    Circle,
+    AlertCircle,
+    Send,
 } from 'lucide-react';
 import api from '../lib/api';
-import { Event } from '../types';
-import { formatDateTime, getStatusColor, getCallStatusColor, getSmsStatusColor } from '../lib/utils';
+import { Event, EscalationLog } from '../types';
+import { formatDateTime, getStatusColor } from '../lib/utils';
+
+// Call status configuration
+const callStatusConfig: Record<string, { label: string; color: string; bgColor: string; icon: React.ElementType }> = {
+    not_called: { label: 'Not Called', color: 'text-gray-500', bgColor: 'bg-gray-100', icon: Circle },
+    initiated: { label: 'Calling...', color: 'text-blue-600', bgColor: 'bg-blue-100', icon: PhoneCall },
+    ringing: { label: 'Ringing', color: 'text-yellow-600', bgColor: 'bg-yellow-100', icon: PhoneCall },
+    in_progress: { label: 'In Progress', color: 'text-blue-600', bgColor: 'bg-blue-100', icon: PhoneCall },
+    answered: { label: 'Answered', color: 'text-green-600', bgColor: 'bg-green-100', icon: CheckCircle2 },
+    completed: { label: 'Completed', color: 'text-green-600', bgColor: 'bg-green-100', icon: CheckCircle2 },
+    no_answer: { label: 'No Answer', color: 'text-orange-600', bgColor: 'bg-orange-100', icon: PhoneMissed },
+    busy: { label: 'Busy', color: 'text-orange-600', bgColor: 'bg-orange-100', icon: PhoneOff },
+    failed: { label: 'Failed', color: 'text-red-600', bgColor: 'bg-red-100', icon: XCircle },
+    cancelled: { label: 'Cancelled', color: 'text-gray-500', bgColor: 'bg-gray-100', icon: XCircle },
+};
+
+// SMS status configuration
+const smsStatusConfig: Record<string, { label: string; color: string; bgColor: string; icon: React.ElementType }> = {
+    not_sent: { label: 'Not Sent', color: 'text-gray-500', bgColor: 'bg-gray-100', icon: Circle },
+    queued: { label: 'Queued', color: 'text-blue-600', bgColor: 'bg-blue-100', icon: Clock },
+    sent: { label: 'Sent', color: 'text-blue-600', bgColor: 'bg-blue-100', icon: Send },
+    delivered: { label: 'Delivered', color: 'text-green-600', bgColor: 'bg-green-100', icon: CheckCircle2 },
+    undelivered: { label: 'Undelivered', color: 'text-orange-600', bgColor: 'bg-orange-100', icon: AlertCircle },
+    failed: { label: 'Failed', color: 'text-red-600', bgColor: 'bg-red-100', icon: XCircle },
+};
+
+function EscalationTimelineItem({ log, isLast }: { log: EscalationLog; isLast: boolean }) {
+    const callConfig = callStatusConfig[log.callStatus] || callStatusConfig.not_called;
+    const smsConfig = smsStatusConfig[log.smsStatus] || smsStatusConfig.not_sent;
+    const CallIcon = callConfig.icon;
+    const SmsIcon = smsConfig.icon;
+
+    // Determine timeline dot color based on acknowledgment status
+    const getDotColor = () => {
+        if (log.acknowledgmentReceived) return 'bg-green-500 border-green-500';
+        if (log.callStatus === 'failed' || log.smsStatus === 'failed') return 'bg-red-500 border-red-500';
+        if (log.callStatus === 'no_answer' || log.callStatus === 'busy') return 'bg-orange-500 border-orange-500';
+        if (log.callStatus === 'completed' || log.callStatus === 'answered') return 'bg-blue-500 border-blue-500';
+        return 'bg-gray-400 border-gray-400';
+    };
+
+    // Calculate time since created
+    const getTimeSince = () => {
+        const created = new Date(log.createdAt);
+        const now = new Date();
+        const diffMs = now.getTime() - created.getTime();
+        const diffMins = Math.floor(diffMs / 60000);
+        if (diffMins < 60) return `${diffMins}m ago`;
+        const diffHours = Math.floor(diffMins / 60);
+        if (diffHours < 24) return `${diffHours}h ago`;
+        const diffDays = Math.floor(diffHours / 24);
+        return `${diffDays}d ago`;
+    };
+
+    // Use contact's user info first (escalation contacts), fall back to direct user
+    const contactName = log.contact?.user?.name || log.user?.name || 'Unknown Contact';
+    const contactPhone = log.contact?.user?.phoneNumber || log.user?.phoneNumber || 'No phone';
+
+    return (
+        <div className={`relative pl-8 pb-6 ${!isLast ? 'border-l-2 border-gray-200 ml-2' : 'ml-2'}`}>
+            {/* Timeline dot */}
+            <div className={`absolute -left-2 top-0 w-4 h-4 rounded-full border-2 ${getDotColor()}`}>
+                {log.acknowledgmentReceived && (
+                    <CheckCircle className="w-3 h-3 text-white absolute -top-0.5 -left-0.5" />
+                )}
+            </div>
+
+            {/* Content card */}
+            <div className={`rounded-lg border p-4 ${log.acknowledgmentReceived ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200'}`}>
+                {/* Header */}
+                <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${log.acknowledgmentReceived ? 'bg-green-100' : 'bg-gray-100'}`}>
+                            <User className={`w-5 h-5 ${log.acknowledgmentReceived ? 'text-green-600' : 'text-gray-500'}`} />
+                        </div>
+                        <div>
+                            <p className="font-semibold text-gray-900">{contactName}</p>
+                            <p className="text-sm text-gray-500">{contactPhone}</p>
+                        </div>
+                    </div>
+                    <div className="text-right">
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                            Attempt #{log.attemptNumber}
+                        </span>
+                    </div>
+                </div>
+
+                {/* Status Grid */}
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                    {/* Call Status */}
+                    <div className={`rounded-lg p-3 ${callConfig.bgColor}`}>
+                        <div className="flex items-center gap-2 mb-1">
+                            <Phone className="w-4 h-4 text-gray-500" />
+                            <span className="text-xs font-medium text-gray-600 uppercase">Voice Call</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <CallIcon className={`w-4 h-4 ${callConfig.color}`} />
+                            <span className={`text-sm font-medium ${callConfig.color}`}>{callConfig.label}</span>
+                        </div>
+                        {log.callSid && (
+                            <p className="text-xs text-gray-400 mt-1 truncate" title={log.callSid}>
+                                SID: {log.callSid.substring(0, 20)}...
+                            </p>
+                        )}
+                    </div>
+
+                    {/* SMS Status */}
+                    <div className={`rounded-lg p-3 ${smsConfig.bgColor}`}>
+                        <div className="flex items-center gap-2 mb-1">
+                            <MessageSquare className="w-4 h-4 text-gray-500" />
+                            <span className="text-xs font-medium text-gray-600 uppercase">SMS</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <SmsIcon className={`w-4 h-4 ${smsConfig.color}`} />
+                            <span className={`text-sm font-medium ${smsConfig.color}`}>{smsConfig.label}</span>
+                        </div>
+                        {log.smsSid && (
+                            <p className="text-xs text-gray-400 mt-1 truncate" title={log.smsSid}>
+                                SID: {log.smsSid.substring(0, 20)}...
+                            </p>
+                        )}
+                    </div>
+                </div>
+
+                {/* Acknowledgment Badge */}
+                {log.acknowledgmentReceived && (
+                    <div className="flex items-center gap-2 p-2 bg-green-100 rounded-lg mb-3">
+                        <CheckCircle2 className="w-5 h-5 text-green-600" />
+                        <div>
+                            <span className="text-sm font-medium text-green-700">Acknowledged</span>
+                            {log.acknowledgedAt && (
+                                <span className="text-xs text-green-600 ml-2">
+                                    at {formatDateTime(log.acknowledgedAt)}
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {/* Error Message */}
+                {log.errorMessage && (
+                    <div className="flex items-start gap-2 p-2 bg-red-50 rounded-lg mb-3">
+                        <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
+                        <p className="text-sm text-red-700">{log.errorMessage}</p>
+                    </div>
+                )}
+
+                {/* Footer with timestamp */}
+                <div className="flex items-center justify-between text-xs text-gray-400 pt-2 border-t border-gray-100">
+                    <div className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        <span>{formatDateTime(log.createdAt)}</span>
+                    </div>
+                    <span>{getTimeSince()}</span>
+                </div>
+            </div>
+        </div>
+    );
+}
 
 export default function EventDetail() {
     const { id } = useParams<{ id: string }>();
@@ -191,42 +358,18 @@ export default function EventDetail() {
                         <h2 className="text-lg font-semibold mb-4">Escalation Timeline</h2>
 
                         {event.escalationLogs.length === 0 ? (
-                            <p className="text-gray-500">No escalation attempts yet</p>
+                            <div className="text-center py-8">
+                                <Circle className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                                <p className="text-gray-500">No escalation attempts yet</p>
+                            </div>
                         ) : (
-                            <div className="space-y-4">
-                                {event.escalationLogs.map((log) => (
-                                    <div key={log.id} className="relative pl-6 pb-4 border-l-2 border-gray-200 last:border-0 last:pb-0">
-                                        <div className="absolute -left-2 top-0 w-4 h-4 rounded-full bg-white border-2 border-primary-500"></div>
-
-                                        <div className="flex items-start justify-between">
-                                            <div>
-                                                <p className="font-medium">{log.contactName}</p>
-                                                <p className="text-sm text-gray-500">{log.contactPhone}</p>
-                                            </div>
-                                            <span className="text-sm text-gray-400">
-                                                Step {log.escalationStep}
-                                            </span>
-                                        </div>
-
-                                        <div className="flex gap-4 mt-2">
-                                            <div className="flex items-center gap-1">
-                                                <Phone className="w-4 h-4 text-gray-400" />
-                                                <span className={`text-sm ${getCallStatusColor(log.callStatus)}`}>
-                                                    {log.callStatus}
-                                                </span>
-                                            </div>
-                                            <div className="flex items-center gap-1">
-                                                <MessageSquare className="w-4 h-4 text-gray-400" />
-                                                <span className={`text-sm ${getSmsStatusColor(log.smsStatus)}`}>
-                                                    {log.smsStatus}
-                                                </span>
-                                            </div>
-                                        </div>
-
-                                        <p className="text-xs text-gray-400 mt-2">
-                                            Started {formatDateTime(log.startedAt)}
-                                        </p>
-                                    </div>
+                            <div className="space-y-0">
+                                {event.escalationLogs.map((log, index) => (
+                                    <EscalationTimelineItem
+                                        key={log.id}
+                                        log={log}
+                                        isLast={index === event.escalationLogs.length - 1}
+                                    />
                                 ))}
                             </div>
                         )}

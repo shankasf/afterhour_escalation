@@ -53,8 +53,18 @@ export class EscalationService {
     // Build escalation ladder
     this.logger.log('[ESCALATION SERVICE] Building escalation ladder...');
     const ladder = await this.buildEscalationLadder();
-    this.logger.log(`[ESCALATION SERVICE] Ladder built with ${ladder.length} contacts:`);
-    ladder.forEach((c, i) => this.logger.log(`  ${i + 1}. ${c.name} (${c.contactType}) - ${c.phoneNumber}`));
+
+    if (ladder.length === 0) {
+      this.logger.error('!'.repeat(70));
+      this.logger.error('[ESCALATION SERVICE] *** NO ESCALATION CONTACTS CONFIGURED ***');
+      this.logger.error('  Cannot escalate - no contacts found in database.');
+      this.logger.error('  Please configure escalation contacts via the admin panel or database.');
+      this.logger.error('  Required: Users with phone numbers linked to EscalationContact records.');
+      this.logger.error('!'.repeat(70));
+    } else {
+      this.logger.log(`[ESCALATION SERVICE] Ladder built with ${ladder.length} contacts:`);
+      ladder.forEach((c, i) => this.logger.log(`  ${i + 1}. ${c.name} (${c.contactType}) - ${c.phoneNumber}`));
+    }
     
     // Save ladder snapshot to event
     await this.prisma.event.update({
@@ -82,36 +92,42 @@ export class EscalationService {
         include: { user: true },
       });
       
-      if (primaryContact) {
+      if (primaryContact && primaryContact.user.phoneNumber) {
         ladder.push({
           id: primaryContact.id,
           userId: primaryContact.userId,
           name: primaryContact.user.name,
-          phoneNumber: primaryContact.user.phoneNumber || '',
+          phoneNumber: primaryContact.user.phoneNumber,
           position: 1,
           contactType: 'primary',
         });
+      } else if (primaryContact) {
+        this.logger.warn(`Primary contact ${primaryContact.user.name} has no phone number - skipping`);
       }
 
-      // Add secondary on-call
-      const secondaryContact = await this.prisma.escalationContact.findFirst({
-        where: { userId: rotation.secondaryUserId, isActive: true },
-        include: { user: true },
-      });
-      
-      if (secondaryContact) {
-        ladder.push({
-          id: secondaryContact.id,
-          userId: secondaryContact.userId,
-          name: secondaryContact.user.name,
-          phoneNumber: secondaryContact.user.phoneNumber || '',
-          position: 2,
-          contactType: 'secondary',
+      // Add secondary on-call (only if secondaryUserId is set)
+      if (rotation.secondaryUserId) {
+        const secondaryContact = await this.prisma.escalationContact.findFirst({
+          where: { userId: rotation.secondaryUserId, isActive: true },
+          include: { user: true },
         });
+
+        if (secondaryContact && secondaryContact.user.phoneNumber) {
+          ladder.push({
+            id: secondaryContact.id,
+            userId: secondaryContact.userId,
+            name: secondaryContact.user.name,
+            phoneNumber: secondaryContact.user.phoneNumber,
+            position: 2,
+            contactType: 'secondary',
+          });
+        } else if (secondaryContact) {
+          this.logger.warn(`Secondary contact ${secondaryContact.user.name} has no phone number - skipping`);
+        }
       }
     }
 
-    // Add fixed contacts
+    // Add fixed contacts (only those with valid phone numbers)
     const fixedContacts = await this.prisma.escalationContact.findMany({
       where: { contactType: 'fixed', isActive: true },
       include: { user: true },
@@ -119,14 +135,18 @@ export class EscalationService {
     });
 
     for (const contact of fixedContacts) {
-      ladder.push({
-        id: contact.id,
-        userId: contact.userId,
-        name: contact.user.name,
-        phoneNumber: contact.user.phoneNumber || '',
-        position: contact.position,
-        contactType: 'fixed',
-      });
+      if (contact.user.phoneNumber) {
+        ladder.push({
+          id: contact.id,
+          userId: contact.userId,
+          name: contact.user.name,
+          phoneNumber: contact.user.phoneNumber,
+          position: contact.position,
+          contactType: 'fixed',
+        });
+      } else {
+        this.logger.warn(`Fixed contact ${contact.user.name} has no phone number - skipping`);
+      }
     }
 
     return ladder;
@@ -160,7 +180,12 @@ export class EscalationService {
 
       if (index >= ladder.length) {
         // All contacts exhausted
-        this.logger.error(`All contacts exhausted for event ${eventId}`);
+        this.logger.error('!'.repeat(70));
+        this.logger.error(`[ESCALATION SERVICE] *** ALL CONTACTS EXHAUSTED ***`);
+        this.logger.error(`  Event ID: ${eventId}`);
+        this.logger.error(`  Attempted ${ladder.length} contact(s) - none acknowledged.`);
+        this.logger.error(`  Event will be marked as MISSED.`);
+        this.logger.error('!'.repeat(70));
         await this.handleEscalationFailure(eventId);
         return;
       }
@@ -230,7 +255,7 @@ export class EscalationService {
           await this.handleAckTimeout(eventId, escalationLog.id, ladder, index);
         }, timeoutMs);
 
-        this.activeEscalations.set(eventId);
+        this.activeEscalations.set(eventId, timeout);
       } catch (error) {
         this.logger.error(`[ESCALATION SERVICE] Failed to escalate to ${contact.name}: ${error.message}`);
 
@@ -455,6 +480,74 @@ export class EscalationService {
   }
 
   /**
+   * Get all active escalations with their current status
+   */
+  async getActiveEscalations(): Promise<any[]> {
+    const activeEventIds = Array.from(this.activeEscalations.keys());
+
+    // Also get events that are in escalated status
+    const escalatingEvents = await this.prisma.event.findMany({
+      where: {
+        OR: [
+          { id: { in: activeEventIds } },
+          { status: EventStatus.escalated },
+        ],
+      },
+      include: {
+        escalationLogs: {
+          include: {
+            user: { select: { id: true, name: true, phoneNumber: true } },
+          },
+          orderBy: { attemptNumber: 'desc' },
+          take: 5,
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return escalatingEvents.map(event => {
+      const latestLog = event.escalationLogs[0];
+      const ladder = (event.escalationLadderSnapshot as any[]) || [];
+
+      return {
+        eventId: event.id,
+        subject: event.subject,
+        source: event.source,
+        emergencyScore: event.emergencyScore,
+        status: event.status,
+        createdAt: event.createdAt,
+        isActive: this.activeEscalations.has(event.id),
+        currentContact: latestLog ? {
+          name: latestLog.user?.name || 'Unknown',
+          phone: latestLog.user?.phoneNumber || 'N/A',
+          attemptNumber: latestLog.attemptNumber,
+          callStatus: latestLog.callStatus,
+          smsStatus: latestLog.smsStatus,
+          callSid: latestLog.callSid,
+          smsSid: latestLog.smsSid,
+        } : null,
+        totalContacts: ladder.length,
+        escalationLogs: event.escalationLogs.map(log => ({
+          id: log.id,
+          attemptNumber: log.attemptNumber,
+          contactName: log.user?.name || 'Unknown',
+          callStatus: log.callStatus,
+          smsStatus: log.smsStatus,
+          acknowledgmentReceived: log.acknowledgmentReceived,
+          createdAt: log.createdAt,
+        })),
+      };
+    });
+  }
+
+  /**
+   * Get count of active escalations
+   */
+  getActiveEscalationCount(): number {
+    return this.activeEscalations.size;
+  }
+
+  /**
    * Handle Twilio call status callback.
    * Advances escalation on terminal failure statuses (busy, no-answer, failed).
    */
@@ -467,8 +560,10 @@ export class EscalationService {
     this.logger.log(`Call status callback: ${data.callSid} -> ${data.status}`);
 
     // Map Twilio status to our CallStatus enum
+    // Twilio statuses: queued, initiated, ringing, in-progress, completed, busy, no-answer, canceled, failed
     const statusMap: Record<string, CallStatus> = {
       queued: CallStatus.not_called,
+      initiated: CallStatus.ringing,  // Call is being placed
       ringing: CallStatus.ringing,
       'in-progress': CallStatus.answered,
       completed: CallStatus.answered,
@@ -478,7 +573,11 @@ export class EscalationService {
       canceled: CallStatus.failed,
     };
 
-    const callStatus = statusMap[data.status] || CallStatus.failed;
+    const callStatus = statusMap[data.status];
+    if (callStatus === undefined) {
+      this.logger.warn(`Unknown call status '${data.status}' for callSid ${data.callSid}`);
+      return; // Don't process unknown statuses
+    }
 
     // Update the escalation log
     const logs = await this.prisma.escalationLog.findMany({

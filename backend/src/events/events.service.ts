@@ -61,7 +61,12 @@ export class EventsService {
         },
         escalationLogs: {
           include: {
-            user: { select: { id: true, name: true, phoneNumber: true } },
+            user: { select: { id: true, name: true, phoneNumber: true, email: true } },
+            contact: {
+              include: {
+                user: { select: { id: true, name: true, phoneNumber: true, email: true } },
+              },
+            },
           },
           orderBy: { attemptNumber: 'asc' },
         },
@@ -275,20 +280,28 @@ export class EventsService {
 
   async downgradeEvent(id: string, userId: string, reason: string): Promise<Event> {
     this.logger.log(`Downgrading event ${id} by user ${userId}: ${reason}`);
-    
+
+    // Fetch existing event first to avoid race condition
+    const existingEvent = await this.prisma.event.findUnique({ where: { id } });
+    if (!existingEvent) {
+      throw new Error(`Event ${id} not found`);
+    }
+
+    const existingContext = (existingEvent.extractedContext as Record<string, any>) || {};
+
     const event = await this.prisma.event.update({
       where: { id },
       data: {
         status: EventStatus.downgraded,
         extractedContext: {
-          ...(await this.prisma.event.findUnique({ where: { id } }))?.extractedContext as any,
+          ...existingContext,
           downgradeReason: reason,
           downgradedBy: userId,
           downgradedAt: new Date().toISOString(),
         } as any,
       },
     });
-    
+
     this.wsGateway.emitEventUpdate(event);
     return event;
   }
@@ -303,20 +316,30 @@ export class EventsService {
     });
 
     const headers = [
-      'ID', 'Source', 'Subject', 'Sender', 'Received At', 
+      'ID', 'Source', 'Subject', 'Sender', 'Received At',
       'Emergency Score', 'Status', 'Acknowledged By', 'Acknowledged At'
     ];
 
+    // Helper to escape CSV fields (handles commas, quotes, newlines)
+    const escapeCsvField = (field: string): string => {
+      if (!field) return '';
+      // If field contains comma, quote, or newline, wrap in quotes and escape existing quotes
+      if (field.includes(',') || field.includes('"') || field.includes('\n') || field.includes('\r')) {
+        return `"${field.replace(/"/g, '""')}"`;
+      }
+      return field;
+    };
+
     const rows = events.map(e => [
-      e.id,
-      e.source,
-      e.subject || '',
-      e.senderEmail || e.senderPhone || '',
-      e.receivedAt.toISOString(),
-      e.emergencyScore?.toString() || '',
-      e.status,
-      (e as any).acknowledgedBy?.name || '',
-      e.acknowledgedAt?.toISOString() || '',
+      escapeCsvField(e.id),
+      escapeCsvField(e.source),
+      escapeCsvField(e.subject || ''),
+      escapeCsvField(e.senderEmail || e.senderPhone || ''),
+      escapeCsvField(e.receivedAt.toISOString()),
+      escapeCsvField(e.emergencyScore?.toString() || ''),
+      escapeCsvField(e.status),
+      escapeCsvField((e as any).acknowledgedBy?.name || ''),
+      escapeCsvField(e.acknowledgedAt?.toISOString() || ''),
     ]);
 
     return [headers.join(','), ...rows.map(r => r.join(','))].join('\n');

@@ -18,6 +18,7 @@ import { AiServiceModule } from './ai-service/ai-service.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { EmailTrackingModule } from './email-tracking/email-tracking.module';
 import { AppConfigModule } from './common/config/app-config.module';
+import { LogsModule } from './logs/logs.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { AppConfigModule } from './common/config/app-config.module';
     AiServiceModule,
     MetricsModule,
     EmailTrackingModule,
+    LogsModule,
   ],
 })
 export class AppModule {}

@@ -2,7 +2,6 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useSocket } from '../contexts/SocketContext';
 import {
-    LayoutDashboard,
     Mail,
     Calendar,
     Bell,
@@ -11,6 +10,8 @@ import {
     Phone,
     Wifi,
     WifiOff,
+    BarChart3,
+    Radio,
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -18,7 +19,8 @@ interface LayoutProps {
 }
 
 const navItems = [
-    { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+    { to: '/live', icon: Radio, label: 'Live Operations' },
+    { to: '/metrics', icon: BarChart3, label: 'Analytics' },
     { to: '/events', icon: Mail, label: 'Events' },
     { to: '/rotation', icon: Calendar, label: 'On-Call' },
     { to: '/alerts', icon: Bell, label: 'Alerts' },

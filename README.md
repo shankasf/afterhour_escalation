@@ -26,7 +26,7 @@ A production-grade, AI-powered emergency escalation system designed for property
 11. [Integrations](#integrations)
 12. [Troubleshooting](#troubleshooting)
 13. [Development Guide](#development-guide)
-14. [Recent Changes](#recent-changes-v110)
+14. [Recent Changes](#recent-changes-v120)
 
 ---
 
@@ -670,7 +670,9 @@ afterhours_escalation/
 │   │   ├── dialpad_agent.py           # Dialpad event processing
 │   │   ├── escalation_agent.py        # Escalation management
 │   │   ├── escalation_orchestrator.py # Multi-agent coordinator
-│   │   └── agent_tools.py             # @function_tool decorated tools
+│   │   ├── head_agent.py              # Centralized agent coordinator
+│   │   ├── agent_tools.py             # @function_tool decorated tools
+│   │   └── queries/                   # Database query templates
 │   │
 │   ├── services/                      # External service integrations
 │   │   ├── twilio_service.py          # Twilio calls/SMS
@@ -679,7 +681,9 @@ afterhours_escalation/
 │   │   ├── email_uid_tracker.py       # Database-backed UID tracking
 │   │   ├── dialpad_service.py         # Dialpad webhook handling
 │   │   ├── http_client.py             # Resilient HTTP with circuit breaker
-│   │   └── after_hours.py             # Coverage window logic
+│   │   ├── after_hours.py             # Coverage window logic
+│   │   ├── voice_audio_store.py       # Voice message audio storage
+│   │   └── websocket_log_handler.py   # Real-time log streaming to frontend
 │   │
 │   ├── routes/                        # API route handlers
 │   │   ├── classify.py                # Classification endpoints
@@ -699,9 +703,10 @@ afterhours_escalation/
 │   ├── src/
 │   │   ├── components/                # Reusable UI components
 │   │   ├── pages/                     # Page components
-│   │   │   ├── Dashboard.tsx
 │   │   │   ├── Events.tsx
 │   │   │   ├── EventDetail.tsx
+│   │   │   ├── Live.tsx               # Real-time log streaming
+│   │   │   ├── Metrics.tsx            # Analytics dashboard
 │   │   │   ├── Rotation.tsx
 │   │   │   ├── Alerts.tsx
 │   │   │   └── Settings.tsx
@@ -1400,7 +1405,71 @@ After database seeding:
 
 ---
 
-## Recent Changes (v1.1.0)
+## Recent Changes (v1.2.0)
+
+### New Features
+
+#### Live Dashboard with Real-Time Logs
+- **New `/live` page**: Real-time event monitoring with WebSocket-powered log streaming
+- **WebSocket log handler**: AI service now streams logs directly to the frontend via WebSocket
+- **Live event updates**: See escalation progress, acknowledgments, and system events in real-time
+
+#### Enhanced Metrics Dashboard
+- **New `/metrics` page**: Comprehensive metrics visualization with charts and statistics
+- **Expanded metrics service**: Added detailed analytics for events, escalations, response times, and SLA compliance
+- **Weekly/daily trends**: Track system performance over time
+
+#### Improved Event Detail Page
+- Enhanced UI with escalation timeline visualization
+- Real-time status updates via WebSocket
+- Better display of escalation ladder and contact attempts
+
+#### Head Agent Integration
+- **New `head_agent.py`**: Centralized agent coordinator for complex multi-step operations
+- **Queries module**: Organized database query templates for AI agents
+
+### Backend Improvements
+
+| Component | Changes |
+|-----------|---------|
+| `escalation.service.ts` | Enhanced escalation logic with better ladder management and status tracking |
+| `events.service.ts` | Improved event creation and status updates |
+| `events.controller.ts` | Added new endpoints for event management |
+| `metrics.service.ts` | Comprehensive metrics aggregation (498 lines added) |
+| `websocket.gateway.ts` | Real-time log streaming and event broadcasting (121 lines added) |
+| `health.service.ts` | Enhanced health checks for all service dependencies |
+| `main.ts` | Improved startup configuration and CORS handling |
+
+### Frontend Improvements
+
+| Component | Changes |
+|-----------|---------|
+| `Live.tsx` | New real-time monitoring page with log streaming |
+| `Metrics.tsx` | New metrics dashboard with charts and statistics |
+| `Events.tsx` | Refactored with improved filtering and pagination |
+| `EventDetail.tsx` | Enhanced detail view with escalation timeline |
+| `Layout.tsx` | Updated navigation with new pages |
+| `App.tsx` | Added routes for new pages |
+
+### AI Service Updates
+
+| Component | Changes |
+|-----------|---------|
+| `email_poller.py` | Improved email processing with better error handling |
+| `email_uid_tracker.py` | Enhanced UID tracking for deduplication |
+| `websocket_log_handler.py` | New WebSocket handler for real-time log streaming |
+| `ah_agents/__init__.py` | Reorganized agent exports |
+| All agents | Streamlined implementations following OpenAI Agents SDK patterns |
+
+### Infrastructure Changes
+
+- **Docker Compose**: Updated service configurations and networking
+- **Nginx**: Improved proxy configuration for WebSocket support
+- **Package management**: Added pnpm lock files for deterministic builds
+
+---
+
+## Previous Changes (v1.1.0)
 
 ### AI Service Refactoring
 

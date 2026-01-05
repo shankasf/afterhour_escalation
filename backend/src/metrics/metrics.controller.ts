@@ -16,6 +16,20 @@ export class MetricsController {
     return this.metricsService.getDashboardMetrics();
   }
 
+  @Get('comprehensive')
+  @ApiOperation({ summary: 'Get comprehensive AI and business metrics' })
+  @ApiQuery({ name: 'startDate', required: false, description: 'Start date (defaults to 30 days ago)' })
+  @ApiQuery({ name: 'endDate', required: false, description: 'End date (defaults to now)' })
+  async getComprehensiveMetrics(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.metricsService.getComprehensiveMetrics(
+      startDate ? new Date(startDate) : undefined,
+      endDate ? new Date(endDate) : undefined,
+    );
+  }
+
   @Get('weekly')
   @ApiOperation({ summary: 'Get weekly metrics' })
   async getWeeklyMetrics() {

@@ -13,13 +13,22 @@ from routes.twilio_webhooks import router as twilio_router
 from routes.health import router as health_router
 from routes.email import router as email_router
 from services.email_poller import start_email_poller
+from services.websocket_log_handler import setup_websocket_logging
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
+
+# Add WebSocket log handler to stream logs to dashboard
+try:
+    ws_log_handler = setup_websocket_logging(level=logging.INFO)
+    logger.info("WebSocket log handler initialized - logs will stream to dashboard")
+except Exception as e:
+    logger.warning(f"Failed to initialize WebSocket log handler: {e}")
 
 settings = get_settings()
 

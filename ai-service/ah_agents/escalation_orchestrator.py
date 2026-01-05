@@ -20,7 +20,6 @@ from typing import Dict, Any, Optional, List
 from enum import Enum
 
 from pydantic import BaseModel, Field
-import httpx
 
 from config import get_settings
 from services.after_hours import is_after_hours, should_escalate_now, get_after_hours_status

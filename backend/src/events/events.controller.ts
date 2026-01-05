@@ -1,12 +1,12 @@
-import { 
-  Controller, Get, Post, Put, Param, Body, Query, 
-  UseGuards, Res, HttpStatus, Headers, UnauthorizedException 
+import {
+  Controller, Get, Post, Put, Param, Body, Query,
+  UseGuards, Res, HttpStatus, Headers, UnauthorizedException
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery, ApiHeader } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { Response } from 'express';
 import { EventsService } from './events.service';
-import { EventSource, EventStatus } from '@prisma/client';
+import { Event, EventSource, EventStatus } from '@prisma/client';
 import { CreateEmailEventDto, CreateDialpadEventDto, UpdateEventStatusDto } from './dto/event.dto';
 import { ConfigService } from '@nestjs/config';
 
@@ -23,7 +23,7 @@ export class EventsController {
     return apiKey === internalKey;
   }
 
-  // Map frontend status names to backend enum values
+  // Map frontend status names to backend enum values (for filtering)
   private mapStatus(status: string): EventStatus | undefined {
     const statusMap: Record<string, EventStatus> = {
       'NEW': EventStatus.pending,
@@ -43,6 +43,56 @@ export class EventsController {
     return statusMap[status];
   }
 
+  // Map backend status to frontend status (for responses)
+  private mapStatusToFrontend(status: EventStatus): string {
+    const statusMap: Record<EventStatus, string> = {
+      [EventStatus.pending]: 'NEW',
+      [EventStatus.escalated]: 'ESCALATING',
+      [EventStatus.acknowledged]: 'ACKNOWLEDGED',
+      [EventStatus.downgraded]: 'DOWNGRADED',
+      [EventStatus.missed]: 'MISSED',
+      [EventStatus.closed]: 'CLOSED',
+    };
+    return statusMap[status] || status;
+  }
+
+  // Map backend source to frontend source (for responses)
+  private mapSourceToFrontend(source: EventSource): string {
+    return source.toUpperCase();
+  }
+
+  // Safely convert date to ISO string
+  private toISOStringSafe(date: Date | string | null | undefined): string | null {
+    if (!date) return null;
+    try {
+      if (date instanceof Date) {
+        return date.toISOString();
+      }
+      // If it's already a string, validate it's a valid date
+      const parsed = new Date(date);
+      if (isNaN(parsed.getTime())) return null;
+      return parsed.toISOString();
+    } catch {
+      return null;
+    }
+  }
+
+  // Transform event for frontend response
+  private transformEvent(event: Event & { acknowledgedBy?: any; escalationLogs?: any[]; acknowledgments?: any[] }): any {
+    const emergencyScore = event.emergencyScore ? Number(event.emergencyScore) : 0;
+    return {
+      ...event,
+      status: this.mapStatusToFrontend(event.status),
+      source: this.mapSourceToFrontend(event.source),
+      emergencyScore,
+      isEmergency: emergencyScore >= 0.6,
+      createdAt: this.toISOStringSafe(event.createdAt) || new Date().toISOString(),
+      updatedAt: this.toISOStringSafe(event.updatedAt) || new Date().toISOString(),
+      receivedAt: this.toISOStringSafe(event.receivedAt) || new Date().toISOString(),
+      acknowledgedAt: this.toISOStringSafe(event.acknowledgedAt),
+    };
+  }
+
   @Get()
   @UseGuards(AuthGuard('jwt'))
   @ApiBearerAuth()
@@ -53,13 +103,15 @@ export class EventsController {
   @ApiQuery({ name: 'endDate', required: false })
   @ApiQuery({ name: 'limit', required: false })
   @ApiQuery({ name: 'offset', required: false })
+  @ApiQuery({ name: 'page', required: false })
   async findAll(
     @Query('status') status?: string,
-    @Query('source') source?: EventSource,
+    @Query('source') source?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
+    @Query('page') page?: string,
   ) {
     // Handle comma-separated statuses
     let statuses: EventStatus[] | undefined;
@@ -69,14 +121,33 @@ export class EventsController {
         .filter((s): s is EventStatus => s !== undefined);
     }
 
-    return this.eventsService.findAll({
+    // Map source to lowercase for backend
+    const mappedSource = source ? source.toLowerCase() as EventSource : undefined;
+
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+    const offsetNum = offset ? parseInt(offset, 10) : (pageNum - 1) * limitNum;
+
+    const { events, total } = await this.eventsService.findAll({
       statuses,
-      source,
+      source: mappedSource,
       startDate: startDate ? new Date(startDate) : undefined,
       endDate: endDate ? new Date(endDate) : undefined,
-      limit: limit ? parseInt(limit, 10) : undefined,
-      offset: offset ? parseInt(offset, 10) : undefined,
+      limit: limitNum,
+      offset: offsetNum,
     });
+
+    // Transform events for frontend
+    const transformedEvents = events.map(event => this.transformEvent(event));
+
+    // Return paginated response in frontend expected format
+    return {
+      data: transformedEvents,
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(total / limitNum),
+    };
   }
 
   @Get('active-escalations')
@@ -90,7 +161,8 @@ export class EventsController {
     if (!this.isInternalRequest(internalKey) && !authHeader) {
       throw new UnauthorizedException('Authorization required');
     }
-    return this.eventsService.getActiveEscalations();
+    const events = await this.eventsService.getActiveEscalations();
+    return events.map(event => this.transformEvent(event));
   }
 
   @Get('acknowledged')
@@ -106,7 +178,8 @@ export class EventsController {
     if (!this.isInternalRequest(internalKey) && !authHeader) {
       throw new UnauthorizedException('Authorization required');
     }
-    return this.eventsService.getAcknowledgedEvents(ownerId);
+    const events = await this.eventsService.getAcknowledgedEvents(ownerId);
+    return events.map(event => this.transformEvent(event));
   }
 
   @Get('export')
@@ -141,7 +214,9 @@ export class EventsController {
     if (!this.isInternalRequest(internalKey) && !authHeader) {
       throw new UnauthorizedException('Authorization required');
     }
-    return this.eventsService.findById(id);
+    const event = await this.eventsService.findById(id);
+    if (!event) return null;
+    return this.transformEvent(event);
   }
 
   @Post('email')
@@ -156,7 +231,7 @@ export class EventsController {
     if (!this.isInternalRequest(internalKey) && !authHeader) {
       throw new UnauthorizedException('Authorization required');
     }
-    return this.eventsService.createEmailEvent({
+    const event = await this.eventsService.createEmailEvent({
       subject: dto.subject,
       body: dto.body,
       senderEmail: dto.senderEmail,
@@ -165,6 +240,7 @@ export class EventsController {
       emergencyScore: dto.emergencyScore,
       aiSummary: dto.aiSummary,
     });
+    return this.transformEvent(event);
   }
 
   @Post('dialpad')
@@ -179,7 +255,7 @@ export class EventsController {
     if (!this.isInternalRequest(internalKey) && !authHeader) {
       throw new UnauthorizedException('Authorization required');
     }
-    return this.eventsService.createDialpadEvent({
+    const event = await this.eventsService.createDialpadEvent({
       senderPhone: dto.senderPhone,
       senderName: dto.senderName,
       voicemailTranscription: dto.voicemailTranscription,
@@ -192,6 +268,7 @@ export class EventsController {
       triageReasoning: dto.triageReasoning,
       issueSummary: dto.issueSummary,
     });
+    return this.transformEvent(event);
   }
 
   @Put(':id/status')
@@ -202,7 +279,8 @@ export class EventsController {
     @Param('id') id: string,
     @Body() dto: UpdateEventStatusDto,
   ) {
-    return this.eventsService.updateStatus(id, dto.status, dto.userId);
+    const event = await this.eventsService.updateStatus(id, dto.status, dto.userId);
+    return this.transformEvent(event);
   }
 
   @Post(':id/downgrade')
@@ -218,6 +296,7 @@ export class EventsController {
     if (!this.isInternalRequest(internalKey) && !authHeader) {
       throw new UnauthorizedException('Authorization required');
     }
-    return this.eventsService.downgradeEvent(id, body.userId, body.reason);
+    const event = await this.eventsService.downgradeEvent(id, body.userId, body.reason);
+    return this.transformEvent(event);
   }
 }

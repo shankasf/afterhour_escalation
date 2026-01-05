@@ -3,12 +3,13 @@ import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { SocketProvider } from './contexts/SocketContext'
 import Layout from './components/Layout'
 import Login from './pages/Login'
-import Dashboard from './pages/Dashboard'
 import Events from './pages/Events'
 import EventDetail from './pages/EventDetail'
 import Rotation from './pages/Rotation'
 import Alerts from './pages/Alerts'
 import Settings from './pages/Settings'
+import Metrics from './pages/Metrics'
+import Live from './pages/Live'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
     const { user, loading } = useAuth()
@@ -41,12 +42,13 @@ function App() {
                                 <ProtectedRoute>
                                     <Layout>
                                         <Routes>
-                                            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                                            <Route path="/dashboard" element={<Dashboard />} />
+                                            <Route path="/" element={<Navigate to="/metrics" replace />} />
                                             <Route path="/events" element={<Events />} />
                                             <Route path="/events/:id" element={<EventDetail />} />
                                             <Route path="/rotation" element={<Rotation />} />
                                             <Route path="/alerts" element={<Alerts />} />
+                                            <Route path="/metrics" element={<Metrics />} />
+                                            <Route path="/live" element={<Live />} />
                                             <Route path="/settings" element={<Settings />} />
                                         </Routes>
                                     </Layout>

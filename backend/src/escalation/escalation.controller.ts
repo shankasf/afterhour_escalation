@@ -13,6 +13,16 @@ import { UserRole } from '@prisma/client';
 export class EscalationController {
   constructor(private escalationService: EscalationService) {}
 
+  @Get('active')
+  @ApiOperation({ summary: 'Get all active escalations with live status' })
+  async getActiveEscalations() {
+    const escalations = await this.escalationService.getActiveEscalations();
+    return {
+      count: this.escalationService.getActiveEscalationCount(),
+      escalations,
+    };
+  }
+
   @Get('contacts')
   @ApiOperation({ summary: 'Get all escalation contacts' })
   async getContacts() {

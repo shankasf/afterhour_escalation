@@ -43,10 +43,6 @@ RUN npx prisma@5.22.0 generate
 # Copy built files
 COPY --from=builder /app/dist ./dist
 
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs && adduser -S nestjs -u 1001
-USER nestjs
-
 EXPOSE 3004
 
 CMD ["node", "dist/src/main.js"]

@@ -3,6 +3,7 @@ export interface User {
   email: string;
   name: string;
   phone?: string;
+  phoneNumber?: string; // Backend uses phoneNumber
   role: 'ADMIN' | 'VIEWER';
   active: boolean;
   createdAt: string;
@@ -31,19 +32,23 @@ export interface Event {
 export interface EscalationLog {
   id: string;
   eventId: string;
-  escalationContactId?: string;
-  contact?: EscalationContact;
-  onCallUserId?: string;
-  onCallUser?: User;
-  contactPhone: string;
-  contactName: string;
-  escalationStep: number;
+  contactId: string;
+  userId: string;
+  contact?: {
+    id: string;
+    userId: string;
+    position: number;
+    user?: User;
+  };
+  user?: User;
+  attemptNumber: number;
   callSid?: string;
-  callStatus: 'PENDING' | 'INITIATED' | 'RINGING' | 'ANSWERED' | 'COMPLETED' | 'FAILED' | 'NO_ANSWER' | 'BUSY';
+  callStatus: 'not_called' | 'initiated' | 'ringing' | 'in_progress' | 'answered' | 'completed' | 'no_answer' | 'busy' | 'failed' | 'cancelled';
   smsSid?: string;
-  smsStatus: 'PENDING' | 'SENT' | 'DELIVERED' | 'FAILED' | 'UNDELIVERED';
-  startedAt: string;
-  completedAt?: string;
+  smsStatus: 'not_sent' | 'queued' | 'sent' | 'delivered' | 'undelivered' | 'failed';
+  acknowledgmentReceived: boolean;
+  acknowledgedAt?: string;
+  errorMessage?: string;
   createdAt: string;
 }
 
@@ -159,4 +164,72 @@ export interface PaginatedResponse<T> {
   page: number;
   limit: number;
   totalPages: number;
+}
+
+// Comprehensive AI and Business Metrics
+export interface ComprehensiveMetrics {
+  aiMetrics: {
+    totalEventsProcessed: number;
+    aiSummariesGenerated: number;
+    emergencyDetectionRate: number;
+    falsePositiveRate: number;
+    avgEmergencyScore: number;
+    highConfidenceClassifications: number;
+  };
+  escalationMetrics: {
+    totalEscalations: number;
+    successfulEscalations: number;
+    escalationSuccessRate: number;
+    avgEscalationDepth: number;
+    firstContactResolutionRate: number;
+    missedEscalations: number;
+    escalationsInProgress: number;
+  };
+  communicationMetrics: {
+    totalCallsMade: number;
+    callsAnswered: number;
+    callAnswerRate: number;
+    totalSmsSent: number;
+    smsDelivered: number;
+    smsDeliveryRate: number;
+    voicemailsReceived: number;
+  };
+  responseTimeMetrics: {
+    avgResponseTimeMinutes: number;
+    medianResponseTimeMinutes: number;
+    p95ResponseTimeMinutes: number;
+    fastestResponseMinutes: number;
+    slowestResponseMinutes: number;
+    slaComplianceRate: number;
+    slaBreaches: number;
+  };
+  sourceMetrics: {
+    emailEvents: number;
+    dialpadEvents: number;
+    emailPercentage: number;
+    dialpadPercentage: number;
+  };
+  businessImpactMetrics: {
+    afterHoursEventsHandled: number;
+    eventsResolvedAutomatically: number;
+    potentialSalesSaved: number;
+    avgHandlingTimeMinutes: number;
+    customerInquiriesCovered: number;
+    downgradedNonEmergencies: number;
+    timeSlotDistribution: Record<string, number>;
+  };
+  trendMetrics: {
+    dailyEventTrend: Array<{ date: string; count: number }>;
+    weekOverWeekChange: number;
+    peakHour: number;
+    peakDay: string;
+  };
+  contactPerformance: Array<{
+    contactName: string;
+    contactPhone?: string;
+    totalAssigned: number;
+    acknowledged: number;
+    responseRate: number;
+    avgResponseTimeMinutes: number;
+  }>;
 }

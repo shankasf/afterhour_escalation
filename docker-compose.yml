@@ -1,26 +1,5 @@
-version: '3.8'
-
 services:
-  # PostgreSQL Database
-  postgres:
-    image: postgres:15-alpine
-    container_name: escalation-postgres
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-escalation_password}
-      POSTGRES_DB: ${POSTGRES_DB:-escalation}
-    ports:
-      - "5434:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
-  # Redis for job queue (using external Supabase PostgreSQL)
+  # Redis for job queue
   redis:
     image: redis:7-alpine
     container_name: escalation-redis
@@ -35,20 +14,18 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # NestJS Backend
+  # NestJS Backend (dev mode)
   backend:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
+    image: node:20-slim
     container_name: escalation-backend
+    working_dir: /app
+    network_mode: host
     environment:
-      # Database connection for Prisma/NestJS.
-      # Prefer providing DATABASE_URL via your local .env.
-      # Default points at the compose postgres container.
-      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:escalation_password@postgres:5432/escalation}
-      REDIS_URL: redis://redis:6379
+      # Database connection (Supabase PostgreSQL)
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: redis://localhost:6380
       JWT_SECRET: ${JWT_SECRET:-afterhours-jwt-secret-key-change-in-production}
-      AI_SERVICE_URL: http://ai-service:8083
+      AI_SERVICE_URL: http://localhost:8083
       NODE_ENV: production
       PORT: 3004
       # Twilio
@@ -68,15 +45,13 @@ services:
       WEBHOOK_BASE_URL: ${WEBHOOK_BASE_URL}
       # Internal API key for service-to-service auth
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-internal-service-key}
-    ports:
-      - "3004:3004"
     volumes:
+      - ./backend:/app
+      - /app/node_modules
       - backend_logs:/app/logs
-      - ./backend/prisma:/app/prisma
+    command: ["sh", "-c", "apt-get update && apt-get install -y python3 make g++ openssl && npm install -g pnpm && pnpm install && npm rebuild bcrypt --build-from-source && npx prisma generate && pnpm start:dev"]
     depends_on:
       redis:
-        condition: service_healthy
-      postgres:
         condition: service_healthy
     restart: unless-stopped
 
@@ -86,6 +61,7 @@ services:
       context: .
       dockerfile: ai-service/Dockerfile
     container_name: escalation-ai-service
+    network_mode: host
     environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       # Not used yet (reserved for future call-audio generation)
@@ -116,32 +92,37 @@ services:
       EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-After-Hours Escalation System}
       ADMIN_EMAIL: ${ADMIN_EMAIL}
       # Backend callback
-      BACKEND_URL: http://backend:3004
+      BACKEND_URL: http://localhost:3004
       WEBHOOK_BASE_URL: ${WEBHOOK_BASE_URL}
       # Internal API key for service-to-service auth
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-internal-service-key}
-    ports:
-      - "8083:8083"
     volumes:
+      - ./ai-service:/app
       - ai_service_logs:/app/logs
       - ai_service_data:/app/data
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8083", "--reload"]
     restart: unless-stopped
 
-  # React Frontend (nginx)
+  # React Frontend (dev mode with Vite)
   frontend:
-    build:
-      context: .
-      dockerfile: frontend/Dockerfile
+    image: node:20-slim
     container_name: escalation-frontend
-    ports:
-      - "5175:80"
+    working_dir: /app
+    network_mode: host
+    environment:
+      - VITE_API_URL=http://localhost:3004
+      - PNPM_HOME=/root/.local/share/pnpm
+      - CI=true
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - frontend_pnpm_store:/root/.local/share/pnpm/store
+    command: ["sh", "-c", "npm install -g pnpm && pnpm config set store-dir /root/.local/share/pnpm/store && pnpm install && pnpm dev --host"]
     depends_on:
       - backend
     restart: unless-stopped
 
 volumes:
-  postgres_data:
-    driver: local
   redis_data:
     driver: local
   backend_logs:
@@ -149,6 +130,8 @@ volumes:
   ai_service_logs:
     driver: local
   ai_service_data:
+    driver: local
+  frontend_pnpm_store:
     driver: local
 
 networks:

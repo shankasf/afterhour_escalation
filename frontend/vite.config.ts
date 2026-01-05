@@ -5,6 +5,10 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5175,
+    allowedHosts: true,
+    watch: {
+      ignored: ['**/.pnpm-store/**', '**/node_modules/**'],
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:3004',

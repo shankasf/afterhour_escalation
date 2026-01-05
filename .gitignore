@@ -54,3 +54,9 @@ prisma/migrations/**/migration_lock.toml
 
 # OS
 Thumbs.db
+
+# pnpm
+.pnpm-store/
+
+# Test/scratch directories
+app_agents/

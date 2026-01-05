@@ -117,6 +117,18 @@ class EmailUidTracker:
         """Get the count of processed UIDs in cache."""
         return len(self._cache)
 
+    def is_processed_sync(self, uid: str) -> bool:
+        """Synchronous check if UID is processed (uses cache only)."""
+        return uid in self._cache
+
+    def mark_processed_sync(self, uid: str) -> None:
+        """Synchronous mark UID as processed (cache only, no backend persist)."""
+        self._cache.add(uid)
+        # Trim cache if needed
+        if len(self._cache) > self._max_cache_size:
+            excess = len(self._cache) - (self._max_cache_size // 2)
+            self._cache = set(list(self._cache)[excess:])
+
     async def clear_cache(self) -> None:
         """Clear the in-memory cache (does not affect database)."""
         async with self._lock:

@@ -1,22 +1,36 @@
-import { format, formatDistanceToNow, parseISO } from 'date-fns';
+import { format, formatDistanceToNow, parseISO, isValid } from 'date-fns';
 
-export function formatDate(date: string | Date): string {
-  const d = typeof date === 'string' ? parseISO(date) : date;
+function safeParseDate(date: string | Date | null | undefined): Date | null {
+  if (!date) return null;
+  try {
+    const d = typeof date === 'string' ? parseISO(date) : date;
+    return isValid(d) ? d : null;
+  } catch {
+    return null;
+  }
+}
+
+export function formatDate(date: string | Date | null | undefined): string {
+  const d = safeParseDate(date);
+  if (!d) return 'N/A';
   return format(d, 'MMM d, yyyy');
 }
 
-export function formatDateTime(date: string | Date): string {
-  const d = typeof date === 'string' ? parseISO(date) : date;
+export function formatDateTime(date: string | Date | null | undefined): string {
+  const d = safeParseDate(date);
+  if (!d) return 'N/A';
   return format(d, 'MMM d, yyyy h:mm a');
 }
 
-export function formatTime(date: string | Date): string {
-  const d = typeof date === 'string' ? parseISO(date) : date;
+export function formatTime(date: string | Date | null | undefined): string {
+  const d = safeParseDate(date);
+  if (!d) return 'N/A';
   return format(d, 'h:mm a');
 }
 
-export function formatRelative(date: string | Date): string {
-  const d = typeof date === 'string' ? parseISO(date) : date;
+export function formatRelative(date: string | Date | null | undefined): string {
+  const d = safeParseDate(date);
+  if (!d) return 'N/A';
   return formatDistanceToNow(d, { addSuffix: true });
 }
 

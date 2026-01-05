@@ -1,11 +1,37 @@
 import logging
 from typing import Dict, Any, Optional
-import httpx
 
 from config import get_settings
+from ah_agents.queries.dialpad import create_dialpad_event, fetch_dialpad_transcription
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+
+def create_dialpad_ops_agent():
+    """Create the ops agent that handles Dialpad backend interactions."""
+
+    try:  # pragma: no cover
+        from agents import Agent
+    except Exception:  # pragma: no cover
+        return None
+
+    return Agent(
+        name="DialpadOpsAgent",
+        instructions=(
+            "You process inbound Dialpad missed calls/voicemails. "
+            "Use tools to fetch voicemail transcriptions when needed and create events in the backend."
+        ),
+        tools=[fetch_dialpad_transcription, create_dialpad_event],
+    )
+
+
+# Singleton instance (module-level)
+dialpad_ops_agent = create_dialpad_ops_agent()
+
+
+# Backward-compatible alias
+get_dialpad_ops_agent = create_dialpad_ops_agent
 
 
 class DialpadAgent:
@@ -71,45 +97,17 @@ class DialpadAgent:
         if not self.enabled:
             return None
 
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    voicemail_url,
-                    headers={"Authorization": f"Bearer {settings.dialpad_api_key}"},
-                    timeout=10.0,
-                )
-
-                if response.status_code == 200:
-                    data = response.json()
-                    return data.get("transcription")
-
-        except Exception as e:
-            logger.error(f"Failed to fetch Dialpad transcription: {str(e)}")
-
-        return None
+        output = await fetch_dialpad_transcription(voicemail_url)
+        return output.transcription
 
     async def _create_event(self, context: Dict[str, Any]) -> Optional[str]:
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{settings.backend_url}/api/events/dialpad",
-                    json={
-                        "senderPhone": context.get("from_number"),
-                        "voicemailTranscription": context.get("transcription"),
-                        "voicemailUrl": context.get("voicemail_url"),
-                        "receivedAt": context.get("timestamp") or "now",
-                    },
-                    timeout=10.0,
-                )
-
-                if response.status_code in (200, 201):
-                    data = response.json()
-                    return data.get("id")
-
-        except Exception as e:
-            logger.error(f"Failed to create Dialpad event in backend: {str(e)}")
-
-        return None
+        output = await create_dialpad_event(
+            sender_phone=context.get("from_number"),
+            voicemail_transcription=context.get("transcription"),
+            voicemail_url=context.get("voicemail_url"),
+            received_at=context.get("timestamp") or "now",
+        )
+        return output.event_id
 
     def is_enabled(self) -> bool:
         return self.enabled

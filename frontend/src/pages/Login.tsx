@@ -108,9 +108,13 @@ export default function Login() {
                     </form>
 
                     <div className="mt-6 pt-6 border-t border-gray-100">
-                        <p className="text-sm text-gray-500 text-center">
-                            Default credentials: <code className="bg-gray-100 px-2 py-1 rounded">admin@example.com</code> / <code className="bg-gray-100 px-2 py-1 rounded">admin123</code>
-                        </p>
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                            <p className="text-sm font-medium text-blue-800 mb-2">Demo Credentials</p>
+                            <div className="space-y-1 text-sm text-blue-700">
+                                <p><span className="font-medium">Email:</span> <code className="bg-blue-100 px-2 py-0.5 rounded">admin@afterhours.com</code></p>
+                                <p><span className="font-medium">Password:</span> <code className="bg-blue-100 px-2 py-0.5 rounded">admin123</code></p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

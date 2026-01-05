@@ -1,123 +1,248 @@
-# =========================
-# OpenAI Agents SDK – All Core Examples
-# =========================
+2026-01-03 21:56:29,007 - services.email_poller - INFO - 
+**********************************************************************
+2026-01-03 21:56:29,007 - services.email_poller - INFO - [EMAIL POLLER] Starting email poll cycle
+2026-01-03 21:56:29,007 - services.email_poller - INFO - **********************************************************************
+2026-01-03 21:56:29,007 - ah_agents.email_triage_agent - INFO - Email Triage Agent initialized with model=gpt-5.2
+2026-01-03 21:56:29,007 - services.email_poller - INFO - [EMAIL POLLER] Fetching unread emails from last 24 hours (NY timezone)...
+2026-01-03 21:56:29,007 - services.email_service - INFO - Connecting to IMAP server: imap.gmail.com:993
+2026-01-03 21:56:29,372 - services.email_service - INFO - Successfully connected to IMAP as callsphereny@gmail.com
+2026-01-03 21:56:29,432 - services.email_service - INFO - Filtering emails since 02-Jan-2026 (America/New_York)
+2026-01-03 21:56:29,558 - services.email_service - INFO - Found 0 emails since 02-Jan-2026
+2026-01-03 21:56:29,594 - services.email_poller - INFO - [EMAIL POLLER] No new unread emails found
+2026-01-03 21:56:29,594 - services.email_poller - INFO - **********************************************************************
 
-# --------
-# Hello World (Sync)
-# --------
-from agents import Agent, Runner
+2026-01-03 21:56:59,593 - services.email_poller - INFO - 
+**********************************************************************
+2026-01-03 21:56:59,593 - services.email_poller - INFO - [EMAIL POLLER] Starting email poll cycle
+2026-01-03 21:56:59,593 - services.email_poller - INFO - **********************************************************************
+2026-01-03 21:56:59,593 - ah_agents.email_triage_agent - INFO - Email Triage Agent initialized with model=gpt-5.2
+2026-01-03 21:56:59,594 - services.email_poller - INFO - [EMAIL POLLER] Fetching unread emails from last 24 hours (NY timezone)...
+2026-01-03 21:56:59,594 - services.email_service - INFO - Connecting to IMAP server: imap.gmail.com:993
+2026-01-03 21:56:59,863 - services.email_service - INFO - Successfully connected to IMAP as callsphereny@gmail.com
+2026-01-03 21:56:59,934 - services.email_service - INFO - Filtering emails since 02-Jan-2026 (America/New_York)
+2026-01-03 21:56:59,983 - services.email_service - INFO - Found 1 emails since 02-Jan-2026
+2026-01-03 21:57:00,219 - services.email_poller - INFO - [EMAIL POLLER] Found 1 unread emails to process
+2026-01-03 21:57:00,219 - services.email_poller - INFO - ----------------------------------------------------------------------
+2026-01-03 21:57:00,219 - services.email_poller - INFO - 
+[EMAIL POLLER] Processing email 1/1:
+2026-01-03 21:57:00,219 - services.email_poller - INFO -   UID: 7
+2026-01-03 21:57:00,219 - services.email_poller - INFO -   From: sagarshankaransm@gmail.com
+2026-01-03 21:57:00,219 - services.email_poller - INFO -   Subject: Fire in my house
+2026-01-03 21:57:00,219 - ah_agents.email_triage_agent - INFO - ============================================================
+2026-01-03 21:57:00,219 - ah_agents.email_triage_agent - INFO - [EMAIL TRIAGE AGENT] Starting classification
+2026-01-03 21:57:00,219 - ah_agents.email_triage_agent - INFO -   Subject: Fire in my house
+2026-01-03 21:57:00,219 - ah_agents.email_triage_agent - INFO -   Sender Domain: gmail.com
+2026-01-03 21:57:00,219 - ah_agents.email_triage_agent - INFO -   Body Length: 53 chars
+2026-01-03 21:57:00,219 - ah_agents.email_triage_agent - INFO -   Keyword Score: 0.90
+2026-01-03 21:57:00,220 - ah_agents.email_triage_agent - INFO -   Urgency Indicators: ['fire']
+2026-01-03 21:57:02,400 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/responses "HTTP/1.1 200 OK"
+2026-01-03 21:57:02,401 - ah_agents.email_triage_agent - INFO -   AI Score: 1.00
+2026-01-03 21:57:02,401 - ah_agents.email_triage_agent - INFO -   Combined Score: 0.96
+2026-01-03 21:57:02,401 - ah_agents.email_triage_agent - INFO -   AI Reasoning: The sender reports an active fire in their house. This is an immediate life-safety emergency requiri...
+2026-01-03 21:57:02,401 - ah_agents.email_triage_agent - INFO -   Safety Critical: True
+2026-01-03 21:57:02,401 - ah_agents.email_triage_agent - INFO - [EMAIL TRIAGE AGENT] Classification complete
+2026-01-03 21:57:02,401 - ah_agents.email_triage_agent - INFO - ============================================================
+2026-01-03 21:57:02,401 - services.email_poller - INFO - [EMAIL POLLER] Triage complete:
+2026-01-03 21:57:02,401 - services.email_poller - INFO -   Emergency Score: 0.96
+2026-01-03 21:57:02,401 - services.email_poller - INFO -   Threshold: 0.6
+2026-01-03 21:57:02,401 - services.email_poller - WARNING - [EMAIL POLLER] *** EMERGENCY DETECTED ***
+2026-01-03 21:57:02,401 - services.email_poller - WARNING -   Subject: Fire in my house
+2026-01-03 21:57:02,402 - services.email_poller - WARNING -   Score: 0.96 >= 0.6
+2026-01-03 21:57:02,402 - services.email_poller - INFO - [EMAIL POLLER] Creating emergency event in backend...
+2026-01-03 21:57:02,402 - services.email_poller - INFO - 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+2026-01-03 21:57:02,402 - services.email_poller - INFO - [ESCALATION PIPELINE] Creating emergency event
+2026-01-03 21:57:02,402 - services.email_poller - INFO - !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+2026-01-03 21:57:02,402 - services.email_poller - INFO - [ESCALATION PIPELINE] Event payload:
+2026-01-03 21:57:02,402 - services.email_poller - INFO -   Subject: Fire in my house
+2026-01-03 21:57:02,402 - services.email_poller - INFO -   Sender: sagarshankaransm@gmail.com
+2026-01-03 21:57:02,402 - services.email_poller - INFO -   Emergency Score: 0.96
+2026-01-03 21:57:02,402 - services.email_poller - INFO -   Posting to: http://backend:3004/api/events/email
+2026-01-03 21:57:02,413 - httpx - INFO - HTTP Request: POST http://backend:3004/api/events/email "HTTP/1.1 201 Created"
+2026-01-03 21:57:02,414 - services.email_poller - INFO - [ESCALATION PIPELINE] Event created successfully!
+2026-01-03 21:57:02,414 - services.email_poller - INFO -   Event ID: 800a9762-c4f2-4348-90bc-4ccd375e1319
+2026-01-03 21:57:02,414 - services.email_poller - INFO - --------------------------------------------------
+2026-01-03 21:57:02,414 - services.email_poller - INFO - [ESCALATION PIPELINE] Starting escalation for event 800a9762-c4f2-4348-90bc-4ccd375e1319...
+2026-01-03 21:57:02,442 - routes.escalate - INFO - Sending escalation to Test On-Call (+18453884267) for event 800a9762-c4f2-4348-90bc-4ccd375e1319
+2026-01-03 21:57:02,442 - ah_agents.voice_agent - INFO - ============================================================
+2026-01-03 21:57:02,442 - ah_agents.voice_agent - INFO - [VOICE AGENT] Generating voice script
+2026-01-03 21:57:02,442 - ah_agents.voice_agent - INFO -   Event ID: 800a9762-c4f2-4348-90bc-4ccd375e1319
+2026-01-03 21:57:02,442 - ah_agents.voice_agent - INFO -   Issue: Fire in my house
+2026-01-03 21:57:02,442 - ah_agents.voice_agent - INFO -   Escalation Level: 1
+2026-01-03 21:57:02,442 - ah_agents.voice_agent - INFO -   Source Type: email
+2026-01-03 21:57:02,595 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/traces/ingest "HTTP/1.1 204 No Content"
+2026-01-03 21:57:02,996 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/traces/ingest "HTTP/1.1 204 No Content"
+2026-01-03 21:57:04,972 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/responses "HTTP/1.1 200 OK"
+2026-01-03 21:57:04,973 - ah_agents.voice_agent - INFO - [VOICE AGENT] AI Generated script (19s):
+2026-01-03 21:57:04,973 - ah_agents.voice_agent - INFO -   After-hours emergency. This is an urgent outbound call at 09:57 PM. There is a fire in my house righ...
+2026-01-03 21:57:04,973 - ah_agents.voice_agent - INFO -   Urgency Level: critical
+2026-01-03 21:57:04,973 - ah_agents.voice_agent - INFO - ============================================================
+2026-01-03 21:57:04,973 - ah_agents.sms_agent - INFO - ============================================================
+2026-01-03 21:57:04,973 - ah_agents.sms_agent - INFO - [SMS AGENT] Generating SMS message
+2026-01-03 21:57:04,973 - ah_agents.sms_agent - INFO -   Event ID: 800a9762-c4f2-4348-90bc-4ccd375e1319
+2026-01-03 21:57:04,973 - ah_agents.sms_agent - INFO -   Issue: Fire in my house
+2026-01-03 21:57:06,131 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/responses "HTTP/1.1 200 OK"
+2026-01-03 21:57:06,133 - ah_agents.sms_agent - INFO - [SMS AGENT] AI Generated message:
+2026-01-03 21:57:06,133 - ah_agents.sms_agent - INFO -   After-Hours Emergency 09:57 PM: Fire in my house. Reply ACK to accept.
+2026-01-03 21:57:06,133 - ah_agents.sms_agent - INFO - ============================================================
+2026-01-03 21:57:06,133 - services.twilio_service - INFO - ============================================================
+2026-01-03 21:57:06,133 - services.twilio_service - INFO - [TWILIO] Initiating outbound call
+2026-01-03 21:57:06,133 - services.twilio_service - INFO -   Event ID: 800a9762-c4f2-4348-90bc-4ccd375e1319
+2026-01-03 21:57:06,133 - services.twilio_service - INFO -   Escalation Log ID: def256f6-fff9-4ec2-a8ab-1b8a72005396
+2026-01-03 21:57:06,133 - services.twilio_service - INFO -   Original To Number: +18453884267
+2026-01-03 21:57:06,133 - services.twilio_service - INFO -   Calling: +18453884267
+2026-01-03 21:57:06,133 - services.twilio_service - INFO -   From Number: +16508552762
+2026-01-03 21:57:06,133 - services.twilio_service - INFO -   Voice Script: After-hours emergency. This is an urgent outbound call at 09:57 PM. There is a f...
+2026-01-03 21:57:06,133 - twilio.http_client - INFO - -- BEGIN Twilio API Request --
+2026-01-03 21:57:06,133 - twilio.http_client - INFO - POST Request: https://api.twilio.com/2010-04-01/Accounts/AC***REDACTED***/Calls.json
+2026-01-03 21:57:06,133 - twilio.http_client - INFO - Headers:
+2026-01-03 21:57:06,133 - twilio.http_client - INFO - Content-Type : application/x-www-form-urlencoded
+2026-01-03 21:57:06,133 - twilio.http_client - INFO - Accept : application/json
+2026-01-03 21:57:06,133 - twilio.http_client - INFO - User-Agent : twilio-python/9.9.0 (Linux x86_64) Python/3.11.14
+2026-01-03 21:57:06,133 - twilio.http_client - INFO - X-Twilio-Client : python-9.9.0
+2026-01-03 21:57:06,133 - twilio.http_client - INFO - Accept-Charset : utf-8
+2026-01-03 21:57:06,133 - twilio.http_client - INFO - -- END Twilio API Request --
+2026-01-03 21:57:06,384 - twilio.http_client - INFO - Response Status Code: 201
+2026-01-03 21:57:06,384 - twilio.http_client - INFO - Response Headers: {'Content-Type': 'application/json;charset=utf-8', 'Content-Length': '2011', 'Connection': 'keep-alive', 'Date': 'Sat, 03 Jan 2026 21:57:06 GMT', 'Location': 'https://call-service.us1.svc.twilio.com/v2/Accounts/CA***REDACTED***', 'Twilio-Concurrent-Requests': '1', 'Twilio-Request-Id': 'RQ26be86225ad184ea25fa0ab8cb4104a2', 'Twilio-Request-Duration': '0.084', 'X-Home-Region': 'us1', 'X-API-Domain': 'api.twilio.com', 'Strict-Transport-Security': 'max-age=31536000', 'X-Cache': 'Miss from cloudfront', 'Via': '1.1 d510c35123e804dd02b84cac5755030e.cloudfront.net (CloudFront)', 'X-Amz-Cf-Pop': 'JFK50-P14', 'X-Amz-Cf-Id': 'RfEPfOAjdVdKvMG2SM5YLb-V64aCVjcbtp_OPzwXAQkWyC1_xF3zbg==', 'X-Powered-By': 'AT-5000', 'X-Shenanigans': 'none', 'Vary': 'Origin'}
+2026-01-03 21:57:06,384 - services.twilio_service - INFO - [TWILIO] Call initiated successfully
+2026-01-03 21:57:06,385 - services.twilio_service - INFO -   Call SID: CA***REDACTED***
+2026-01-03 21:57:06,385 - services.twilio_service - INFO -   Status: queued
+2026-01-03 21:57:06,385 - services.twilio_service - INFO - ============================================================
+2026-01-03 21:57:06,385 - services.twilio_service - INFO - ============================================================
+2026-01-03 21:57:06,385 - services.twilio_service - INFO - [TWILIO] Sending SMS
+2026-01-03 21:57:06,385 - services.twilio_service - INFO -   Event ID: 800a9762-c4f2-4348-90bc-4ccd375e1319
+2026-01-03 21:57:06,385 - services.twilio_service - INFO -   Original To Number: +18453884267
+2026-01-03 21:57:06,385 - services.twilio_service - INFO -   Sending to: +18453884267
+2026-01-03 21:57:06,385 - services.twilio_service - INFO -   Message: After-Hours Emergency 09:57 PM: Fire in my house. Reply ACK to accept.
+2026-01-03 21:57:06,385 - twilio.http_client - INFO - -- BEGIN Twilio API Request --
+2026-01-03 21:57:06,385 - twilio.http_client - INFO - POST Request: https://api.twilio.com/2010-04-01/Accounts/AC***REDACTED***/Messages.json
+2026-01-03 21:57:06,385 - twilio.http_client - INFO - Headers:
+2026-01-03 21:57:06,385 - twilio.http_client - INFO - Content-Type : application/x-www-form-urlencoded
+2026-01-03 21:57:06,385 - twilio.http_client - INFO - Accept : application/json
+2026-01-03 21:57:06,385 - twilio.http_client - INFO - User-Agent : twilio-python/9.9.0 (Linux x86_64) Python/3.11.14
+2026-01-03 21:57:06,385 - twilio.http_client - INFO - X-Twilio-Client : python-9.9.0
+2026-01-03 21:57:06,385 - twilio.http_client - INFO - Accept-Charset : utf-8
+2026-01-03 21:57:06,385 - twilio.http_client - INFO - -- END Twilio API Request --
+2026-01-03 21:57:06,527 - twilio.http_client - INFO - Response Status Code: 201
+2026-01-03 21:57:06,527 - twilio.http_client - INFO - Response Headers: {'Content-Type': 'application/json;charset=utf-8', 'Content-Length': '834', 'Connection': 'keep-alive', 'Date': 'Sat, 03 Jan 2026 21:57:06 GMT', 'Twilio-Concurrent-Requests': '1', 'Twilio-Request-Id': 'RQ21cc4d03185b272d59061de94170286d', 'Twilio-Request-Duration': '0.123', 'X-Home-Region': 'us1', 'X-API-Domain': 'api.twilio.com', 'Strict-Transport-Security': 'max-age=31536000', 'X-Cache': 'Miss from cloudfront', 'Via': '1.1 d510c35123e804dd02b84cac5755030e.cloudfront.net (CloudFront)', 'X-Amz-Cf-Pop': 'JFK50-P14', 'X-Amz-Cf-Id': 'oAsNoKXtihesVS9NMqENCm2zj9H6wOP_IT-_dTj5G091PoTsB4D0wA==', 'X-Powered-By': 'AT-5000', 'X-Shenanigans': 'none', 'Vary': 'Origin'}
+2026-01-03 21:57:06,527 - services.twilio_service - INFO - [TWILIO] SMS sent successfully
+2026-01-03 21:57:06,527 - services.twilio_service - INFO -   Message SID: SM21cc4d03185b272d59061de94170286d
+2026-01-03 21:57:06,527 - services.twilio_service - INFO -   Status: queued
+2026-01-03 21:57:06,527 - services.twilio_service - INFO - ============================================================
+INFO:     172.20.0.2:47272 - "POST /escalate HTTP/1.1" 200 OK
+2026-01-03 21:57:06,529 - routes.twilio_webhooks - INFO - Call status update - SID: CA***REDACTED***, Status: initiated
+2026-01-03 21:57:06,537 - httpx - INFO - HTTP Request: POST http://backend:3004/api/escalation/start/800a9762-c4f2-4348-90bc-4ccd375e1319 "HTTP/1.1 201 Created"
+2026-01-03 21:57:06,538 - services.email_poller - ERROR - [ESCALATION PIPELINE] Failed to start escalation
+2026-01-03 21:57:06,538 - services.email_poller - ERROR -   Status: 201
+2026-01-03 21:57:06,538 - services.email_poller - ERROR -   Response: {"success":true,"message":"Escalation started"}
+2026-01-03 21:57:06,538 - services.email_poller - INFO - [EMAIL POLLER] Email marked as processed
+2026-01-03 21:57:06,538 - services.email_poller - INFO - [EMAIL POLLER] Poll cycle complete
+2026-01-03 21:57:06,538 - services.email_poller - INFO - **********************************************************************
 
-agent = Agent(
-    name="Assistant",
-    instructions="You are a helpful assistant."
-)
+2026-01-03 21:57:06,546 - httpx - INFO - HTTP Request: POST http://backend:3004/api/escalation/call-status "HTTP/1.1 201 Created"
+INFO:     172.20.0.1:33062 - "POST /twilio/voice/status?event_id=800a9762-c4f2-4348-90bc-4ccd375e1319&escalation_log_id=def256f6-fff9-4ec2-a8ab-1b8a72005396 HTTP/1.1" 200 OK
+2026-01-03 21:57:06,554 - httpx - INFO - HTTP Request: POST http://backend:3004/api/email-tracking/mark-processed "HTTP/1.1 201 Created"
+2026-01-03 21:57:06,872 - routes.twilio_webhooks - INFO - SMS status update - SID: SM21cc4d03185b272d59061de94170286d, Status: undelivered
+2026-01-03 21:57:06,883 - httpx - INFO - HTTP Request: POST http://backend:3004/api/escalation/sms-status "HTTP/1.1 201 Created"
+INFO:     172.20.0.1:33062 - "POST /twilio/sms/status?event_id=800a9762-c4f2-4348-90bc-4ccd375e1319 HTTP/1.1" 200 OK
+2026-01-03 21:57:07,185 - routes.twilio_webhooks - INFO - Call status update - SID: CA***REDACTED***, Status: ringing
+2026-01-03 21:57:07,197 - httpx - INFO - HTTP Request: POST http://backend:3004/api/escalation/call-status "HTTP/1.1 201 Created"
+INFO:     172.20.0.1:33062 - "POST /twilio/voice/status?event_id=800a9762-c4f2-4348-90bc-4ccd375e1319&escalation_log_id=def256f6-fff9-4ec2-a8ab-1b8a72005396 HTTP/1.1" 200 OK
+2026-01-03 21:57:08,319 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/traces/ingest "HTTP/1.1 204 No Content"
+2026-01-03 21:57:17,291 - routes.twilio_webhooks - INFO - Call status update - SID: CA***REDACTED***, Status: in-progress
+2026-01-03 21:57:17,305 - httpx - INFO - HTTP Request: POST http://backend:3004/api/escalation/call-status "HTTP/1.1 201 Created"
+INFO:     172.20.0.1:54192 - "POST /twilio/voice/status?event_id=800a9762-c4f2-4348-90bc-4ccd375e1319&escalation_log_id=def256f6-fff9-4ec2-a8ab-1b8a72005396 HTTP/1.1" 200 OK
+2026-01-03 21:57:22,494 - routes.twilio_webhooks - INFO - Voice call initiated for event 800a9762-c4f2-4348-90bc-4ccd375e1319, answered_by=human
+INFO:     172.20.0.1:54194 - "POST /twilio/voice?event_id=800a9762-c4f2-4348-90bc-4ccd375e1319&script=After-hours+emergency.+This+is+an+urgent+outbound+call+at+09%3A57+PM.+There+is+a+fire+in+my+house+right+now.+Please+respond+immediately+and+coordinate+emergency+help+and+next+steps.+If+you+can+take+this+incident%2C+stay+on+the+line+and+confirm+you+are+in+charge.+Press+1+to+acknowledge+and+take+ownership. HTTP/1.1" 200 OK
+2026-01-03 21:57:36,538 - services.email_poller - INFO - 
+**********************************************************************
+2026-01-03 21:57:36,538 - services.email_poller - INFO - [EMAIL POLLER] Starting email poll cycle
+2026-01-03 21:57:36,538 - services.email_poller - INFO - **********************************************************************
+2026-01-03 21:57:36,538 - ah_agents.email_triage_agent - INFO - Email Triage Agent initialized with model=gpt-5.2
+2026-01-03 21:57:36,538 - services.email_poller - INFO - [EMAIL POLLER] Fetching unread emails from last 24 hours (NY timezone)...
+2026-01-03 21:57:36,538 - services.email_service - INFO - Connecting to IMAP server: imap.gmail.com:993
+2026-01-03 21:57:36,831 - services.email_service - INFO - Successfully connected to IMAP as callsphereny@gmail.com
+2026-01-03 21:57:36,907 - services.email_service - INFO - Filtering emails since 02-Jan-2026 (America/New_York)
+2026-01-03 21:57:36,967 - services.email_service - INFO - Found 0 emails since 02-Jan-2026
+2026-01-03 21:57:37,032 - services.email_poller - INFO - [EMAIL POLLER] No new unread emails found
+2026-01-03 21:57:37,032 - services.email_poller - INFO - **********************************************************************
 
-result = Runner.run_sync(
-    agent,
-    "Write a haiku about recursion in programming."
-)
-print("Hello World Output:\n", result.final_output)
+2026-01-03 21:57:48,457 - routes.twilio_webhooks - INFO - Voice gather - Event: 800a9762-c4f2-4348-90bc-4ccd375e1319, Digits: 1
+2026-01-03 21:57:48,457 - ah_agents.ack_monitor_agent - INFO - Processing voice ACK for event 800a9762-c4f2-4348-90bc-4ccd375e1319
+2026-01-03 21:57:48,467 - httpx - INFO - HTTP Request: GET http://backend:3004/api/users "HTTP/1.1 200 OK"
+2026-01-03 21:57:48,478 - httpx - INFO - HTTP Request: POST http://backend:3004/api/acknowledgments/internal "HTTP/1.1 201 Created"
+INFO:     172.20.0.1:39644 - "POST /twilio/voice/gather?event_id=800a9762-c4f2-4348-90bc-4ccd375e1319 HTTP/1.1" 200 OK
+2026-01-03 21:57:57,260 - routes.twilio_webhooks - INFO - Call status update - SID: CA***REDACTED***, Status: completed
+2026-01-03 21:57:57,274 - httpx - INFO - HTTP Request: POST http://backend:3004/api/escalation/call-status "HTTP/1.1 201 Created"
+INFO:     172.20.0.1:40490 - "POST /twilio/voice/status?event_id=800a9762-c4f2-4348-90bc-4ccd375e1319&escalation_log_id=def256f6-fff9-4ec2-a8ab-1b8a72005396 HTTP/1.1" 200 OK
+2026-01-03 21:58:07,032 - services.email_poller - INFO - 
+**********************************************************************
+2026-01-03 21:58:07,032 - services.email_poller - INFO - [EMAIL POLLER] Starting email poll cycle
+2026-01-03 21:58:07,032 - services.email_poller - INFO - **********************************************************************
+2026-01-03 21:58:07,032 - ah_agents.email_triage_agent - INFO - Email Triage Agent initialized with model=gpt-5.2
+2026-01-03 21:58:07,032 - services.email_poller - INFO - [EMAIL POLLER] Fetching unread emails from last 24 hours (NY timezone)...
+2026-01-03 21:58:07,032 - services.email_service - INFO - Connecting to IMAP server: imap.gmail.com:993
+2026-01-03 21:58:07,240 - services.email_service - INFO - Successfully connected to IMAP as callsphereny@gmail.com
+2026-01-03 21:58:07,281 - services.email_service - INFO - Filtering emails since 02-Jan-2026 (America/New_York)
+2026-01-03 21:58:07,327 - services.email_service - INFO - Found 0 emails since 02-Jan-2026
+2026-01-03 21:58:07,364 - services.email_poller - INFO - [EMAIL POLLER] No new unread emails found
+2026-01-03 21:58:07,364 - services.email_poller - INFO - **********************************************************************
 
+2026-01-03 21:58:37,363 - services.email_poller - INFO - 
+**********************************************************************
+2026-01-03 21:58:37,363 - services.email_poller - INFO - [EMAIL POLLER] Starting email poll cycle
+2026-01-03 21:58:37,363 - services.email_poller - INFO - **********************************************************************
+2026-01-03 21:58:37,363 - ah_agents.email_triage_agent - INFO - Email Triage Agent initialized with model=gpt-5.2
+2026-01-03 21:58:37,363 - services.email_poller - INFO - [EMAIL POLLER] Fetching unread emails from last 24 hours (NY timezone)...
+2026-01-03 21:58:37,364 - services.email_service - INFO - Connecting to IMAP server: imap.gmail.com:993
+2026-01-03 21:58:37,620 - services.email_service - INFO - Successfully connected to IMAP as callsphereny@gmail.com
+2026-01-03 21:58:37,667 - services.email_service - INFO - Filtering emails since 02-Jan-2026 (America/New_York)
+2026-01-03 21:58:37,713 - services.email_service - INFO - Found 0 emails since 02-Jan-2026
+2026-01-03 21:58:37,749 - services.email_poller - INFO - [EMAIL POLLER] No new unread emails found
+2026-01-03 21:58:37,749 - services.email_poller - INFO - **********************************************************************
 
-# --------
-# Handoffs Example (Async)
-# --------
-import asyncio
-
-spanish_agent = Agent(
-    name="Spanish agent",
-    instructions="You only speak Spanish."
-)
-
-english_agent = Agent(
-    name="English agent",
-    instructions="You only speak English."
-)
-
-triage_agent = Agent(
-    name="Triage agent",
-    instructions="Handoff to the appropriate agent based on the language of the request.",
-    handoffs=[spanish_agent, english_agent],
-)
-
-
-async def handoff_example():
-    result = await Runner.run(
-        triage_agent,
-        input="Hola, ¿cómo estás?"
-    )
-    print("Handoff Output:\n", result.final_output)
-
-
-# --------
-# Function Tool Example
-# --------
-from agents import function_tool
-
-
-@function_tool
-def get_weather(city: str) -> str:
-    return f"The weather in {city} is sunny."
-
-weather_agent = Agent(
-    name="Weather agent",
-    instructions="You are a helpful agent.",
-    tools=[get_weather],
-)
-
-
-async def function_example():
-    result = await Runner.run(
-        weather_agent,
-        input="What's the weather in Tokyo?"
-    )
-    print("Function Tool Output:\n", result.final_output)
-
-
-# --------
-# Session Memory Example (SQLite)
-# --------
-from agents import SQLiteSession
-
-session_agent = Agent(
-    name="Session Assistant",
-    instructions="Reply very concisely."
-)
-
-session = SQLiteSession("conversation_123", "conversations.db")
-
-
-async def session_example():
-    result1 = await Runner.run(
-        session_agent,
-        "What city is the Golden Gate Bridge in?",
-        session=session,
-    )
-    print(result1.final_output)
-
-    result2 = await Runner.run(
-        session_agent,
-        "What state is it in?",
-        session=session,
-    )
-    print(result2.final_output)
-
-    result3 = Runner.run_sync(
-        session_agent,
-        "What's the population?",
-        session=session,
-    )
-    print(result3.final_output)
-
-
-# --------
-# Run all async examples
-# --------
-async def main():
-    await handoff_example()
-    await function_example()
-    await session_example()
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
+[Nest] 1  - 01/03/2026, 9:57:02 PM     LOG [EventsService] ============================================================
+[Nest] 1  - 01/03/2026, 9:57:02 PM     LOG [EventsService] [EVENTS SERVICE] Creating email event
+[Nest] 1  - 01/03/2026, 9:57:02 PM     LOG [EventsService]   From: sagarshankaransm@gmail.com
+[Nest] 1  - 01/03/2026, 9:57:02 PM     LOG [EventsService]   Subject: Fire in my house...
+[Nest] 1  - 01/03/2026, 9:57:02 PM     LOG [EventsService]   Pre-triaged Score: 0.96
+[Nest] 1  - 01/03/2026, 9:57:02 PM     LOG [EventsService] [EVENTS SERVICE] Event created successfully
+[Nest] 1  - 01/03/2026, 9:57:02 PM     LOG [EventsService]   Event ID: 800a9762-c4f2-4348-90bc-4ccd375e1319
+[Nest] 1  - 01/03/2026, 9:57:02 PM     LOG [EventsService]   Score: 0.96
+[Nest] 1  - 01/03/2026, 9:57:02 PM     LOG [EventsService]   Status: escalated
+[Nest] 1  - 01/03/2026, 9:57:02 PM     LOG [EventsService] ============================================================
+[Nest] 1  - 01/03/2026, 9:57:02 PM     LOG [EscalationService] ======================================================================
+[Nest] 1  - 01/03/2026, 9:57:02 PM     LOG [EscalationService] [ESCALATION SERVICE] Starting escalation for event 800a9762-c4f2-4348-90bc-4ccd375e1319
+[Nest] 1  - 01/03/2026, 9:57:02 PM     LOG [EscalationService] ======================================================================
+[Nest] 1  - 01/03/2026, 9:57:02 PM     LOG [EscalationService] [ESCALATION SERVICE] Event found:
+[Nest] 1  - 01/03/2026, 9:57:02 PM     LOG [EscalationService]   Subject: Fire in my house...
+[Nest] 1  - 01/03/2026, 9:57:02 PM     LOG [EscalationService]   Score: 0.96
+[Nest] 1  - 01/03/2026, 9:57:02 PM     LOG [EscalationService] [ESCALATION SERVICE] Building escalation ladder...
+[Nest] 1  - 01/03/2026, 9:57:02 PM     LOG [EscalationService] [ESCALATION SERVICE] Ladder built with 1 contacts:
+[Nest] 1  - 01/03/2026, 9:57:02 PM     LOG [EscalationService]   1. Test On-Call (fixed) - +18453884267
+[Nest] 1  - 01/03/2026, 9:57:02 PM     LOG [EscalationService] --------------------------------------------------
+[Nest] 1  - 01/03/2026, 9:57:02 PM     LOG [EscalationService] [ESCALATION SERVICE] Escalating to contact #1
+[Nest] 1  - 01/03/2026, 9:57:02 PM     LOG [EscalationService]   Name: Test On-Call
+[Nest] 1  - 01/03/2026, 9:57:02 PM     LOG [EscalationService]   Phone: +18453884267
+[Nest] 1  - 01/03/2026, 9:57:02 PM     LOG [EscalationService]   Type: fixed
+[Nest] 1  - 01/03/2026, 9:57:02 PM     LOG [EscalationService]   Event ID: 800a9762-c4f2-4348-90bc-4ccd375e1319
+[Nest] 1  - 01/03/2026, 9:57:02 PM     LOG [EscalationService] [ESCALATION SERVICE] Calling AI service to send notifications...
+[Nest] 1  - 01/03/2026, 9:57:06 PM     LOG [EscalationService] [ESCALATION SERVICE] AI service response:
+[Nest] 1  - 01/03/2026, 9:57:06 PM     LOG [EscalationService]   Call SID: CA***REDACTED***
+[Nest] 1  - 01/03/2026, 9:57:06 PM     LOG [EscalationService]   SMS SID: SM21cc4d03185b272d59061de94170286d
+[Nest] 1  - 01/03/2026, 9:57:06 PM     LOG [EscalationService] [ESCALATION SERVICE] Setting ACK timeout: 120s
+[Nest] 1  - 01/03/2026, 9:57:06 PM     LOG [EscalationService] Call status callback: CA***REDACTED*** -> initiated
+[Nest] 1  - 01/03/2026, 9:57:06 PM   DEBUG [EmailTrackingService] Marked email UID as processed: 7
+[Nest] 1  - 01/03/2026, 9:57:06 PM     LOG [EscalationService] SMS status callback: SM21cc4d03185b272d59061de94170286d -> undelivered
+[Nest] 1  - 01/03/2026, 9:57:07 PM     LOG [EscalationService] Call status callback: CA***REDACTED*** -> ringing
+[Nest] 1  - 01/03/2026, 9:57:17 PM     LOG [EscalationService] Call status callback: CA***REDACTED*** -> in-progress
+[Nest] 1  - 01/03/2026, 9:57:48 PM     LOG [AcknowledgmentService] Creating acknowledgment by phone for event 800a9762-c4f2-4348-90bc-4ccd375e1319
+[Nest] 1  - 01/03/2026, 9:57:48 PM     LOG [AcknowledgmentService] Creating acknowledgment for event 800a9762-c4f2-4348-90bc-4ccd375e1319
+[Nest] 1  - 01/03/2026, 9:57:57 PM     LOG [EscalationService] Call status callback: CA***REDACTED*** -> completed
+[Nest] 1  - 01/03/2026, 9:57:57 PM     LOG [EscalationService] Event 800a9762-c4f2-4348-90bc-4ccd375e1319 already acknowledged, ignoring call status
+[Nest] 1  - 01/03/2026, 9:59:06 PM    WARN [EscalationService] --------------------------------------------------
+[Nest] 1  - 01/03/2026, 9:59:06 PM    WARN [EscalationService] [ESCALATION SERVICE] ACK timeout for event 800a9762-c4f2-4348-90bc-4ccd375e1319
+[Nest] 1  - 01/03/2026, 9:59:06 PM    WARN [EscalationService]   No acknowledgment received from contact #1
+[Nest] 1  - 01/03/2026, 9:59:06 PM    WARN [EscalationService]   Moving to next contact in ladder...
+[Nest] 1  - 01/03/2026, 9:59:06 PM     LOG [EscalationService] [ESCALATION SERVICE] Event already acknowledged, stopping escalation
+[Nest] 1  - 01/03/2026, 10:00:00 PM    WARN [HealthService] System health: degraded

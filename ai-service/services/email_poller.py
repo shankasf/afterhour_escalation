@@ -24,7 +24,7 @@ _poller_task = None
 async def poll_and_process_emails():
     """
     Poll for new unread emails from the last 24 hours (New York time),
-    triage them, and create events for emergencies.
+    triage them with AI, and create events for emergencies.
     """
     logger.info("\n" + "*"*70)
     logger.info("[EMAIL POLLER] Starting email poll cycle")
@@ -63,6 +63,7 @@ async def poll_and_process_emails():
             subject = email_data.get("subject", "")
             body = email_data.get("body", "")
             from_email = email_data.get("from_email", "")
+            from_domain = email_data.get("from_domain", "")
 
             logger.info(f"\n[EMAIL POLLER] Processing email {idx}/{len(emails)}:")
             logger.info(f"  UID: {uid}")
@@ -70,21 +71,25 @@ async def poll_and_process_emails():
             logger.info(f"  Subject: {subject[:60]}..." if len(subject) > 60 else f"  Subject: {subject}")
 
             try:
-                # Triage the email
+                # AI Triage: Analyze email and get score
                 triage_result = await triage_agent.classify(
                     subject=subject,
                     body=body,
-                    sender_domain=email_data.get("from_domain", "")
+                    sender_domain=from_domain
                 )
 
                 emergency_score = triage_result.get("emergency_score", 0)
+                is_service_related = triage_result.get("is_service_related", False)
+                summary = triage_result.get("summary", "")
                 threshold = settings.emergency_score_threshold
-                
-                logger.info(f"[EMAIL POLLER] Triage complete:")
+
+                logger.info(f"[EMAIL POLLER] AI Triage Result:")
+                logger.info(f"  Service Related: {is_service_related}")
                 logger.info(f"  Emergency Score: {emergency_score:.2f}")
+                logger.info(f"  Summary: {summary}")
                 logger.info(f"  Threshold: {threshold}")
 
-                # Check if this is an emergency (score >= threshold)
+                # Only escalate if score >= threshold
                 if emergency_score >= threshold:
                     logger.warning(f"[EMAIL POLLER] *** EMERGENCY DETECTED ***")
                     logger.warning(f"  Subject: {subject}")
@@ -96,7 +101,7 @@ async def poll_and_process_emails():
                         triage_result=triage_result
                     )
                 else:
-                    logger.info(f"[EMAIL POLLER] Non-emergency - no escalation needed")
+                    logger.info(f"[EMAIL POLLER] Not an emergency - no escalation needed")
                     logger.info(f"  Score {emergency_score:.2f} < threshold {threshold}")
 
                 # Mark as processed (persisted to database)
@@ -108,7 +113,7 @@ async def poll_and_process_emails():
 
     except Exception as e:
         logger.error(f"[EMAIL POLLER] Error polling emails: {str(e)}")
-    
+
     logger.info("[EMAIL POLLER] Poll cycle complete")
     logger.info("*"*70 + "\n")
 
@@ -121,7 +126,7 @@ async def create_emergency_event(email_data: dict, triage_result: dict):
     logger.info("\n" + "!"*70)
     logger.info("[ESCALATION PIPELINE] Creating emergency event")
     logger.info("!"*70)
-    
+
     try:
         http_client = get_http_client()
 
@@ -133,7 +138,7 @@ async def create_emergency_event(email_data: dict, triage_result: dict):
             "senderName": email_data.get("from_name", ""),
             "senderDomain": email_data.get("from_domain", ""),
             "emergencyScore": triage_result.get("emergency_score", 0),
-            "aiSummary": triage_result.get("reasoning", ""),
+            "aiSummary": triage_result.get("summary", "") or triage_result.get("reasoning", ""),
             "extractedContext": triage_result.get("extracted_context", {}),
         }
 
@@ -166,7 +171,7 @@ async def create_emergency_event(email_data: dict, triage_result: dict):
                 timeout=30.0
             )
 
-            if escalate_response.status_code == 200:
+            if escalate_response.status_code in (200, 201):
                 logger.info(f"[ESCALATION PIPELINE] Escalation started successfully!")
                 logger.info(f"  Calls and SMS being sent to on-call contacts...")
                 logger.info("!"*70 + "\n")
@@ -210,3 +215,16 @@ def get_poller_status():
         "running": _poller_task is not None and not _poller_task.done(),
         "processed_count": uid_tracker.get_processed_count(),
     }
+
+
+# Wrapper functions for backwards compatibility with routes/email.py
+def is_email_processed(uid: str) -> bool:
+    """Check if an email UID has been processed (sync wrapper)."""
+    uid_tracker = get_email_uid_tracker()
+    return uid_tracker.is_processed_sync(uid)
+
+
+def mark_email_processed(uid: str) -> None:
+    """Mark an email UID as processed (sync wrapper)."""
+    uid_tracker = get_email_uid_tracker()
+    uid_tracker.mark_processed_sync(uid)

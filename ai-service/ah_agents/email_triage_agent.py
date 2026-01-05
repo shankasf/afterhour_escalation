@@ -1,200 +1,201 @@
-"""Email Triage Agent - Classifies emails and determines emergency scores.
-
-Uses OpenAI Agents SDK pattern from instruction.txt:
-    from agents import Agent, Runner
-    agent = Agent(name="...", instructions="...")
-    result = await Runner.run(agent, input="...")
-"""
+"""Email Triage Agent - Classifies emails and determines emergency scores."""
 
 import logging
-import os
-import re
-from typing import Dict, Any, List, Optional
+from typing import Optional
 
 from pydantic import BaseModel, Field
+from agents import Agent, Runner
+
 from config import get_settings
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
-
-_MODEL = "gpt-5.2"
 
 
 class TriageOutput(BaseModel):
     """Structured output for email triage."""
     score: float = Field(ge=0.0, le=1.0, description="Emergency score 0-1")
     reasoning: str = Field(default="", description="Brief explanation")
+    summary: str = Field(default="", description="One-line summary of the email")
+    is_service_related: bool = Field(default=False, description="Is this about property/maintenance service")
     location: Optional[str] = Field(None, description="Property/location if identified")
     equipment: Optional[str] = Field(None, description="Equipment/system involved")
     is_safety_critical: Optional[bool] = Field(None, description="Life/safety threat")
 
 
-# Keywords for fallback scoring
-CRITICAL_KEYWORDS = {
-    "no power": 0.9, "power outage": 0.9, "flood": 0.95, "flooding": 0.95,
-    "leak": 0.85, "water leak": 0.9, "fire alarm": 0.95, "fire": 0.9,
-    "hvac failure": 0.85, "no heat": 0.85, "no cooling": 0.8, "no ac": 0.8,
-    "elevator stuck": 0.9, "security breach": 0.9, "break-in": 0.9,
-    "can't operate": 0.85, "cannot operate": 0.85, "emergency": 0.75,
-}
+def create_email_triage_agent() -> Agent:
+    """Create the LLM agent that triages emails for emergencies."""
 
-URGENT_KEYWORDS = {
-    "urgent": 0.7, "immediately": 0.65, "asap": 0.6, "offline": 0.6,
-    "after hours": 0.5, "not working": 0.5, "broken": 0.5, "failed": 0.55,
-}
+    return Agent(
+        name="EmailTriageAgent",
+        model="gpt-5.2",
+        output_type=TriageOutput,
+        instructions="""You are an emergency triage system for after-hours property maintenance requests.
 
-NEGATIVE_KEYWORDS = {
-    "pm": 0.3, "preventive maintenance": 0.4, "scheduled": 0.35, "routine": 0.4,
-    "cosmetic": 0.3, "minor": 0.25, "when convenient": 0.3, "no rush": 0.4,
-}
+Your job is to analyze emails and determine:
+1. Is this email related to property/building maintenance services?
+2. If yes, how urgent is it?
+
+IMPORTANT: Many emails will be spam, promotional, banking notifications, newsletters, etc.
+These are NOT service-related and should get a score of 0.0-0.1.
+
+ONLY emails about property maintenance, building issues, or facility emergencies are relevant.
+
+SCORING GUIDELINES:
+- 0.0-0.1: NOT service-related (spam, promotions, banking, newsletters, personal emails)
+- 0.1-0.3: Service-related but routine/low priority (scheduled maintenance, minor cosmetic)
+- 0.3-0.5: Service-related, can wait until business hours (degraded service, non-critical)
+- 0.5-0.7: Urgent but not critical (broken equipment affecting operations, offline systems)
+- 0.7-0.9: Critical operations impact (power outage, HVAC failure, can't operate)
+- 0.9-1.0: Life safety emergency (fire, flood, gas leak, security breach, someone trapped)
+
+EXAMPLES OF NON-SERVICE EMAILS (score 0.0-0.1):
+- Bank transaction notifications, UPI/payment confirmations
+- Marketing emails, newsletters, social media notifications
+- Order confirmations, shipping updates, password resets
+
+EXAMPLES OF SERVICE EMAILS:
+- "Fire alarm going off at 123 Main St" -> 0.95
+- "No power in building" -> 0.9
+- "Water leak in basement" -> 0.85
+- "AC not working, it's 95 degrees" -> 0.75
+- "Elevator making strange noise" -> 0.5
+- "Light bulb out in lobby" -> 0.2
+
+Always provide a one-line summary of the email content.""",
+    )
 
 
-class EmailTriageAgent:
-    """Agent for classifying emails and determining emergency scores."""
+# Singleton instance (module-level)
+email_triage_agent = create_email_triage_agent()
 
-    def __init__(self):
-        self._agent = None
-        self._init_agent()
 
-    def _init_agent(self):
-        """Initialize the OpenAI Agent following instruction.txt pattern."""
-        api_key = settings.openai_api_key or os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            logger.warning("OpenAI API key not configured - using keyword-only scoring")
-            return
+# Backward-compatible alias
+get_email_triage_agent = create_email_triage_agent
 
-        os.environ.setdefault("OPENAI_API_KEY", api_key)
 
-        try:
-            from agents import Agent
+async def classify_email(
+    subject: str,
+    body: str,
+    sender_domain: str = "",
+    keywords: list = None,
+) -> dict:
+    """Classify an email and return emergency score with context."""
+    logger.info("=" * 60)
+    logger.info("[EMAIL TRIAGE AGENT] Starting classification")
+    logger.info(f"  Subject: {subject[:80]}..." if len(subject) > 80 else f"  Subject: {subject}")
+    logger.info(f"  Sender Domain: {sender_domain}")
+    logger.info(f"  Body Length: {len(body)} chars")
 
-            self._agent = Agent(
-                name="Email Triage Agent",
-                instructions=(
-                    "You are an emergency triage system for after-hours maintenance requests. "
-                    "Analyze emails and return an urgency score (0-1) with reasoning.\n\n"
-                    "SCORING GUIDELINES:\n"
-                    "- 0.9-1.0: Life safety (fire, flood, security breach, entrapment)\n"
-                    "- 0.7-0.9: Critical ops (power outage, HVAC failure, can't operate)\n"
-                    "- 0.5-0.7: Urgent but not critical (broken equipment, offline systems)\n"
-                    "- 0.3-0.5: Can wait (degraded service, minor issues)\n"
-                    "- 0.0-0.3: Routine (scheduled, preventive, low priority)"
-                ),
-                model=_MODEL,
-                output_type=TriageOutput,
-            )
-            logger.info(f"Email Triage Agent initialized with model={_MODEL}")
-        except Exception as e:
-            logger.error(f"Failed to initialize agent: {e}")
+    try:
+        # Truncate body if too long
+        truncated_body = body[:3000] if len(body) > 3000 else body
 
-    async def classify(self, subject: str, body: str, sender_domain: str = "") -> Dict[str, Any]:
-        """Classify an email and return emergency score with context."""
-        logger.info("="*60)
-        logger.info("[EMAIL TRIAGE AGENT] Starting classification")
-        logger.info(f"  Subject: {subject[:80]}..." if len(subject) > 80 else f"  Subject: {subject}")
-        logger.info(f"  Sender Domain: {sender_domain}")
-        logger.info(f"  Body Length: {len(body)} chars")
-        
-        full_text = f"{subject}\n{body}".lower()
-        keyword_score = self._keyword_score(full_text)
-        indicators = self._extract_indicators(full_text)
-        
-        logger.info(f"  Keyword Score: {keyword_score:.2f}")
-        logger.info(f"  Urgency Indicators: {indicators}")
+        # Build prompt with keywords if available
+        prompt = (
+            f"Analyze this email and determine if it's a property/maintenance service request:\n\n"
+            f"FROM: {sender_domain}\n"
+            f"SUBJECT: {subject}\n\n"
+            f"BODY:\n{truncated_body}\n\n"
+        )
 
-        if self._agent:
-            try:
-                from agents import Runner
+        if keywords:
+            prompt += _format_keywords(keywords)
 
-                prompt = (
-                    f"Analyze this after-hours maintenance email:\n\n"
-                    f"Subject: {subject}\n"
-                    f"Body: {body}\n"
-                    f"Sender: {sender_domain}\n\n"
-                    "Provide emergency score and reasoning."
-                )
-                result = await Runner.run(self._agent, prompt)
-                output: TriageOutput = result.final_output
+        prompt += "Provide: is_service_related, score (0-1), summary, and reasoning."
 
-                # Combine AI and keyword scores
-                combined_score = (output.score * 0.6) + (keyword_score * 0.4)
-                
-                logger.info(f"  AI Score: {output.score:.2f}")
-                logger.info(f"  Combined Score: {combined_score:.2f}")
-                logger.info(f"  AI Reasoning: {output.reasoning[:100]}..." if len(output.reasoning) > 100 else f"  AI Reasoning: {output.reasoning}")
-                logger.info(f"  Safety Critical: {output.is_safety_critical}")
-                logger.info("[EMAIL TRIAGE AGENT] Classification complete")
-                logger.info("="*60)
+        result = await Runner.run(email_triage_agent, prompt)
+        output: TriageOutput = result.final_output
 
-                return {
-                    "emergency_score": min(1.0, combined_score),
-                    "extracted_context": {
-                        "location": output.location,
-                        "equipment": output.equipment,
-                        "is_safety_critical": output.is_safety_critical,
-                    },
-                    "urgency_indicators": indicators,
-                    "reasoning": output.reasoning,
-                    "keyword_score": keyword_score,
-                    "ai_score": output.score,
-                }
-            except Exception as e:
-                logger.error(f"[EMAIL TRIAGE AGENT] AI classification failed: {e}")
-                logger.info("[EMAIL TRIAGE AGENT] Falling back to keyword-only scoring")
+        logger.info(f"  Service Related: {output.is_service_related}")
+        logger.info(f"  Score: {output.score:.2f}")
+        logger.info(f"  Summary: {output.summary}")
+        logger.info(f"  Safety Critical: {output.is_safety_critical}")
+        logger.info("[EMAIL TRIAGE AGENT] Classification complete")
+        logger.info("=" * 60)
 
-        # Fallback to keyword-only
-        logger.info(f"[EMAIL TRIAGE AGENT] Keyword-only result: score={keyword_score:.2f}")
-        logger.info("="*60)
         return {
-            "emergency_score": keyword_score,
-            "extracted_context": self._extract_context(full_text),
-            "urgency_indicators": indicators,
-            "reasoning": "Keyword-based scoring (AI unavailable)",
-            "keyword_score": keyword_score,
+            "emergency_score": output.score,
+            "is_service_related": output.is_service_related,
+            "summary": output.summary,
+            "extracted_context": {
+                "location": output.location,
+                "equipment": output.equipment,
+                "is_safety_critical": output.is_safety_critical,
+            },
+            "reasoning": output.reasoning,
+        }
+    except Exception as e:
+        logger.error(f"[EMAIL TRIAGE AGENT] Classification failed: {e}")
+        # Fallback to keyword scoring
+        score = _fallback_score(f"{subject}\n{body}".lower(), keywords)
+        return {
+            "emergency_score": score,
+            "is_service_related": score > 0.3,
+            "summary": subject[:100],
+            "extracted_context": {},
+            "reasoning": f"Fallback scoring (error: {e})",
         }
 
-    def _keyword_score(self, text: str) -> float:
-        """Calculate score based on keyword matching."""
-        score = 0.0
-        matches = 0
 
-        for keyword, weight in CRITICAL_KEYWORDS.items():
-            if keyword in text:
-                score += weight
-                matches += 1
+def _format_keywords(keywords: list) -> str:
+    """Format keywords into a prompt section."""
+    if not keywords:
+        return ""
+    lines = ["EMERGENCY KEYWORDS (use for scoring):"]
+    for kw in sorted(keywords, key=lambda x: x.get("weight", 0), reverse=True)[:20]:
+        keyword = kw.get("keyword", "")
+        weight = kw.get("weight", 1.0)
+        score = min(1.0, weight / 2.0)
+        lines.append(f"  - '{keyword}' -> ~{score:.1f}")
+    return "\n".join(lines) + "\n\n"
 
-        for keyword, weight in URGENT_KEYWORDS.items():
-            if keyword in text:
-                score += weight * 0.7
-                matches += 1
 
-        reduction = sum(w for kw, w in NEGATIVE_KEYWORDS.items() if kw in text)
+def _fallback_score(text: str, keywords: list = None) -> float:
+    """Fallback scoring when AI unavailable."""
+    if keywords:
+        for kw in keywords:
+            if kw.get("keyword", "").lower() in text:
+                return min(1.0, kw.get("weight", 1.0) / 2.0)
 
-        if matches > 0:
-            base = score / matches
-            return min(1.0, max(0, base - (reduction * 0.5)))
-        return 0.3
+    critical = ["fire", "flood", "leak", "no power", "gas leak", "emergency"]
+    for kw in critical:
+        if kw in text:
+            return 0.85
 
-    def _extract_indicators(self, text: str) -> List[str]:
-        """Extract matched urgency keywords."""
-        all_kw = {**CRITICAL_KEYWORDS, **URGENT_KEYWORDS}
-        return [kw for kw in all_kw if kw in text]
+    urgent = ["urgent", "hvac", "no heat", "broken", "not working"]
+    for kw in urgent:
+        if kw in text:
+            return 0.6
 
-    def _extract_context(self, text: str) -> Dict[str, Any]:
-        """Extract basic context from text."""
-        context = {}
+    service = ["maintenance", "repair", "building", "property"]
+    for kw in service:
+        if kw in text:
+            return 0.3
 
-        # Location patterns
-        for pattern in [r"at\s+(\d+\s+[A-Za-z\s]+(?:street|st|avenue|ave|road|rd))", r"location[:\s]+([^\n,]+)"]:
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                context["location"] = match.group(1).strip()
-                break
+    return 0.1
 
-        # Equipment
-        for eq in ["hvac", "elevator", "boiler", "generator", "pump", "ac", "heater"]:
-            if eq in text:
-                context["equipment"] = eq.upper()
-                break
 
-        return context
+# Wrapper class for backward compatibility
+class EmailTriageAgent:
+    """Wrapper for backward compatibility."""
+
+    async def classify(self, subject: str, body: str, sender_domain: str = "") -> dict:
+        # Fetch keywords from backend
+        keywords = await self._fetch_keywords()
+        return await classify_email(subject, body, sender_domain, keywords)
+
+    async def _fetch_keywords(self) -> list:
+        try:
+            from services.http_client import get_http_client
+            http_client = get_http_client()
+            response = await http_client.get(
+                f"{settings.backend_url}/api/settings/keywords",
+                headers={"x-internal-key": settings.internal_api_key},
+                timeout=5.0
+            )
+            if response.status_code == 200:
+                return response.json()
+        except Exception as e:
+            logger.debug(f"Could not fetch keywords: {e}")
+        return []

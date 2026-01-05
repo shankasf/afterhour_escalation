@@ -320,7 +320,8 @@ class EmailService:
                 return []
             
             message_ids = messages[0].split()
-            logger.info(f"Found {len(message_ids)} emails since {since_date}")
+            now_time = now_in_tz.strftime("%H:%M:%S")
+            logger.info(f"[{now_time}] Found {len(message_ids)} emails since {since_date}")
             
             for msg_id in message_ids:
                 try:

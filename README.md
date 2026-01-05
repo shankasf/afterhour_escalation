@@ -886,20 +886,19 @@ Create a `.env` file in the project root with the following variables:
 # ============================================================================
 # DATABASE
 # ============================================================================
-DATABASE_URL="postgresql://user:password@host:5432/database"
-# Individual components (used by some services)
-DB_USER=postgres
-DB_PASSWORD=your_password
-DB_NAME=escalation
-DB_HOST=localhost
-DB_PORT=5432
+DATABASE_URL=""
+DB_USER=""
+DB_PASSWORD=""
+DB_NAME=""
+DB_HOST=""
+DB_PORT=""
 
 # ============================================================================
 # AUTHENTICATION
 # ============================================================================
-JWT_SECRET="your-secure-random-string-at-least-32-chars"
+JWT_SECRET=""
 JWT_EXPIRATION="7d"
-INTERNAL_API_KEY="shared-key-for-service-to-service-auth"
+INTERNAL_API_KEY=""
 
 # ============================================================================
 # SERVICE URLS
@@ -907,7 +906,7 @@ INTERNAL_API_KEY="shared-key-for-service-to-service-auth"
 BACKEND_URL="http://localhost:3004"
 AI_SERVICE_URL="http://localhost:8083"
 FRONTEND_URL="http://localhost:5175"
-WEBHOOK_BASE_URL="https://your-public-domain.com"
+WEBHOOK_BASE_URL=""
 
 # ============================================================================
 # PORTS
@@ -919,35 +918,34 @@ FRONTEND_PORT=5175
 # ============================================================================
 # OPENAI (Required for AI classification)
 # ============================================================================
-OPENAI_API_KEY="sk-your-openai-api-key"
-# Note: Model is locked to gpt-5.2 in code
+OPENAI_API_KEY=""
 
 # ============================================================================
 # TWILIO (Required for voice/SMS)
 # ============================================================================
-TWILIO_ACCOUNT_SID="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-TWILIO_AUTH_TOKEN="your-auth-token"
-TWILIO_PHONE_NUMBER="+14155551234"
-TWILIO_WEBHOOK_URL="https://your-domain.com/twilio"
+TWILIO_ACCOUNT_SID=""
+TWILIO_AUTH_TOKEN=""
+TWILIO_PHONE_NUMBER=""
+TWILIO_WEBHOOK_URL=""
 
 # ============================================================================
 # GMAIL (Required for email monitoring)
 # ============================================================================
 IMAP_HOST="imap.gmail.com"
 IMAP_PORT=993
-IMAP_USER="your-email@gmail.com"
-IMAP_PASSWORD="your-16-char-app-password"
+IMAP_USER=""
+IMAP_PASSWORD=""
 IMAP_ENCRYPTION="SSL"
 
 SMTP_HOST="smtp.gmail.com"
 SMTP_PORT=587
-SMTP_USER="your-email@gmail.com"
-SMTP_PASSWORD="your-16-char-app-password"
+SMTP_USER=""
+SMTP_PASSWORD=""
 SMTP_ENCRYPTION="STARTTLS"
 
-EMAIL_FROM_ADDRESS="your-email@gmail.com"
+EMAIL_FROM_ADDRESS=""
 EMAIL_FROM_NAME="After-Hours Escalation System"
-ADMIN_EMAIL="admin@your-company.com"
+ADMIN_EMAIL=""
 
 # ============================================================================
 # DIALPAD (Optional)

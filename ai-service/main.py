@@ -3,23 +3,23 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging
+import os
 import asyncio
 
 from config import get_settings
+from logging_setup import setup_logging
+from middleware import CorrelationIdMiddleware, HttpLoggingMiddleware
 from routes.classify import router as classify_router
-from routes.dialpad import router as dialpad_router
 from routes.escalate import router as escalate_router
-from routes.twilio_webhooks import router as twilio_router
 from routes.health import router as health_router
 from routes.email import router as email_router
+from routes.graph import router as graph_router
+from webrtc.signaling import router as webrtc_router
 from services.email_poller import start_email_poller
 from services.websocket_log_handler import setup_websocket_logging
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Configure structured JSON logging for the entire process.
+setup_logging(os.getenv("LOG_LEVEL", "info"))
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
@@ -40,12 +40,20 @@ _poller_task = None
 async def lifespan(app: FastAPI):
     global _poller_task
     logger.info("Starting AI Service...")
-    
+
+    # Initialize the LangGraph singleton (creates checkpoint tables on first boot).
+    try:
+        from graph.graph import get_graph
+        get_graph()
+        logger.info("LangGraph singleton initialized")
+    except Exception as e:
+        logger.warning(f"LangGraph init deferred: {e}")
+
     # Start email poller as background task
     poll_interval = 30  # seconds
     logger.info(f"Starting email poller (interval: {poll_interval}s)")
     _poller_task = asyncio.create_task(start_email_poller(poll_interval))
-    
+
     yield
     
     # Cancel poller on shutdown
@@ -74,13 +82,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Structured logging middleware. Starlette runs middlewares in the reverse
+# order they are added (last-added is innermost). We want CorrelationId to be
+# the outermost so that HttpLoggingMiddleware sees the correlation id, so
+# add HttpLoggingMiddleware first and CorrelationIdMiddleware last.
+app.add_middleware(HttpLoggingMiddleware)
+app.add_middleware(CorrelationIdMiddleware)
+
 # Include routers
 app.include_router(health_router, tags=["health"])
 app.include_router(classify_router, prefix="/classify", tags=["classification"])
-app.include_router(dialpad_router, prefix="/dialpad", tags=["dialpad"])
 app.include_router(escalate_router, prefix="/escalate", tags=["escalation"])
-app.include_router(twilio_router, prefix="/twilio", tags=["twilio"])
 app.include_router(email_router, tags=["email"])
+app.include_router(graph_router, prefix="/graph", tags=["graph"])
+app.include_router(webrtc_router, prefix="/webrtc", tags=["webrtc"])
 
 
 @app.get("/")

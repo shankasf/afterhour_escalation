@@ -60,19 +60,9 @@ def get_settings():
     return _get_settings()
 
 
-def get_twilio_service():
-    """Get the Twilio service instance."""
-    return Container.get('twilio_service')
-
-
 def get_email_service():
     """Get the email service instance."""
     return Container.get('email_service')
-
-
-def get_dialpad_service():
-    """Get the Dialpad service instance."""
-    return Container.get('dialpad_service')
 
 
 def get_escalation_orchestrator():
@@ -92,16 +82,12 @@ def get_email_uid_tracker():
 
 def init_container() -> None:
     """Initialize the DI container with all service factories."""
-    from services.twilio_service import TwilioService
     from services.email_service import EmailService
-    from services.dialpad_service import DialpadService
     from ah_agents.escalation_orchestrator import EscalationOrchestrator
     from services.http_client import ResilientHttpClient
     from services.email_uid_tracker import EmailUidTracker
 
-    Container.register('twilio_service', TwilioService)
     Container.register('email_service', EmailService)
-    Container.register('dialpad_service', DialpadService)
     Container.register('escalation_orchestrator', EscalationOrchestrator)
     Container.register('http_client', ResilientHttpClient)
     Container.register('email_uid_tracker', EmailUidTracker)

@@ -8,6 +8,7 @@ import httpx
 from pydantic import BaseModel, Field
 
 from config import get_settings
+from logging_setup import with_correlation_header
 from . import function_tool
 
 logger = logging.getLogger(__name__)
@@ -79,7 +80,7 @@ async def get_current_rotation() -> RotationOutput:
         async with httpx.AsyncClient() as client:
             resp = await client.get(
                 f"{settings.backend_url}/api/escalation/rotation/current",
-                headers={"x-internal-key": settings.internal_api_key},
+                headers=with_correlation_header({"x-internal-key": settings.internal_api_key}),
                 timeout=10.0,
             )
             if resp.status_code == 200:
@@ -117,7 +118,7 @@ async def get_escalation_ladder() -> EscalationLadderOutput:
         async with httpx.AsyncClient() as client:
             resp = await client.get(
                 f"{settings.backend_url}/api/escalation/ladder",
-                headers={"x-internal-key": settings.internal_api_key},
+                headers=with_correlation_header({"x-internal-key": settings.internal_api_key}),
                 timeout=10.0,
             )
             if resp.status_code == 200:
@@ -148,7 +149,7 @@ async def start_escalation(event_id: str) -> StartEscalationOutput:
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 f"{settings.backend_url}/api/escalation/start/{event_id}",
-                headers={"x-internal-key": settings.internal_api_key},
+                headers=with_correlation_header({"x-internal-key": settings.internal_api_key}),
                 timeout=30.0,
             )
             if resp.status_code in (200, 201):
@@ -165,54 +166,6 @@ async def start_escalation(event_id: str) -> StartEscalationOutput:
     except Exception as e:
         logger.error("[queries.escalation] start_escalation failed: %s", e)
         return StartEscalationOutput(success=False, error=str(e))
-
-
-@function_tool
-async def notify_call_status(call_sid: str, status: str, event_id: str, escalation_log_id: Optional[str] = None) -> BackendResult:
-    """Notify backend about Twilio call status."""
-    payload: dict[str, Any] = {
-        "callSid": call_sid,
-        "status": status,
-        "eventId": event_id,
-        "timestamp": datetime.now().isoformat(),
-    }
-    if escalation_log_id:
-        payload["escalationLogId"] = escalation_log_id
-
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                f"{settings.backend_url}/api/escalation/call-status",
-                json=payload,
-                headers={"x-internal-key": settings.internal_api_key},
-                timeout=10.0,
-            )
-            return BackendResult(success=resp.status_code in (200, 201), status_code=resp.status_code)
-    except Exception as e:
-        logger.error("[queries.escalation] notify_call_status failed: %s", e)
-        return BackendResult(success=False, error=str(e))
-
-
-@function_tool
-async def notify_sms_status(sms_sid: str, status: str, event_id: str) -> BackendResult:
-    """Notify backend about Twilio SMS status."""
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                f"{settings.backend_url}/api/escalation/sms-status",
-                json={
-                    "smsSid": sms_sid,
-                    "status": status,
-                    "eventId": event_id,
-                    "timestamp": datetime.now().isoformat(),
-                },
-                headers={"x-internal-key": settings.internal_api_key},
-                timeout=10.0,
-            )
-            return BackendResult(success=resp.status_code in (200, 201), status_code=resp.status_code)
-    except Exception as e:
-        logger.error("[queries.escalation] notify_sms_status failed: %s", e)
-        return BackendResult(success=False, error=str(e))
 
 
 @function_tool
@@ -236,7 +189,7 @@ async def log_escalation_attempt(
                     "method": method,
                     "timestamp": datetime.now().isoformat(),
                 },
-                headers={"x-internal-key": settings.internal_api_key},
+                headers=with_correlation_header({"x-internal-key": settings.internal_api_key}),
                 timeout=10.0,
             )
             if resp.status_code in (200, 201):
@@ -260,7 +213,7 @@ async def check_event_status(event_id: str) -> EventStatusOutput:
         async with httpx.AsyncClient() as client:
             resp = await client.get(
                 f"{settings.backend_url}/api/events/{event_id}",
-                headers={"x-internal-key": settings.internal_api_key},
+                headers=with_correlation_header({"x-internal-key": settings.internal_api_key}),
                 timeout=10.0,
             )
             if resp.status_code == 200:
@@ -321,7 +274,7 @@ async def stop_escalation(event_id: str, reason: str) -> StopEscalationOutput:
             resp = await client.post(
                 f"{settings.backend_url}/api/escalation/{event_id}/stop",
                 json={"reason": reason},
-                headers={"x-internal-key": settings.internal_api_key},
+                headers=with_correlation_header({"x-internal-key": settings.internal_api_key}),
                 timeout=10.0,
             )
             if resp.status_code in (200, 201):

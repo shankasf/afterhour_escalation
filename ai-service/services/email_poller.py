@@ -110,6 +110,10 @@ async def poll_and_process_emails():
 
             except Exception as e:
                 logger.error(f"[EMAIL POLLER] Error triaging email '{subject}': {str(e)}")
+                # Mark as processed even on error to prevent infinite retry loops
+                await uid_tracker.mark_processed(uid)
+                logger.warning(f"[EMAIL POLLER] Email marked as processed despite error (UID: {uid})")
+                continue
 
     except Exception as e:
         logger.error(f"[EMAIL POLLER] Error polling emails: {str(e)}")

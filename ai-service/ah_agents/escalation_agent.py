@@ -6,8 +6,6 @@ from config import get_settings
 from ah_agents.queries.escalation import (
     get_escalation_ladder,
     start_escalation,
-    notify_call_status,
-    notify_sms_status,
 )
 
 logger = logging.getLogger(__name__)
@@ -20,16 +18,19 @@ def create_escalation_ops_agent():
     try:  # pragma: no cover
         from agents import Agent
     except Exception:  # pragma: no cover
+        logger.warning("Agents SDK unavailable; escalation ops agent disabled")
         return None
+
+    logger.info("Creating EscalationOpsAgent")
 
     return Agent(
         name="EscalationOpsAgent",
         instructions=(
             "You manage escalation operations through backend APIs. "
-            "Use tools to fetch the escalation ladder, start escalations, and record call/SMS status. "
+            "Use tools to fetch the escalation ladder and start escalations. "
             "Never guess; rely on tool outputs."
         ),
-        tools=[get_escalation_ladder, start_escalation, notify_call_status, notify_sms_status],
+        tools=[get_escalation_ladder, start_escalation],
     )
 
 
@@ -61,9 +62,3 @@ class EscalationAgent:
             logger.info("[ESCALATION AGENT] Escalation started successfully")
             return output.data
         return {"success": False, "error": output.error or "Failed to start escalation"}
-
-    async def notify_backend_call_status(self, call_sid: str, status: str, event_id: str) -> None:
-        await notify_call_status(call_sid=call_sid, status=status, event_id=event_id)
-
-    async def notify_backend_sms_status(self, sms_sid: str, status: str, event_id: str) -> None:
-        await notify_sms_status(sms_sid=sms_sid, status=status, event_id=event_id)

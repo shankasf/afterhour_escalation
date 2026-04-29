@@ -12,7 +12,6 @@ import { EventsModule } from '../events/events.module';
 // New focused services
 import { EscalationRepository } from './repositories/escalation.repository';
 import { LadderBuilderService } from './services/ladder-builder.service';
-import { StatusTrackerService } from './services/status-tracker.service';
 import { AcknowledgmentHandlerService } from './services/acknowledgment-handler.service';
 import { EscalationCoordinatorService } from './services/escalation-coordinator.service';
 import { LadderConfigService } from './services/ladder-config.service';
@@ -32,7 +31,6 @@ import { LadderConfigService } from './services/ladder-config.service';
     // Focused services
     LadderConfigService,
     LadderBuilderService,
-    StatusTrackerService,
     AcknowledgmentHandlerService,
     EscalationCoordinatorService,
     // Legacy service (maintained for backward compatibility)

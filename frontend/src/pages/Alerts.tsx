@@ -97,11 +97,6 @@ export default function Alerts() {
                         status={health?.services.emailPoller}
                         icon={<Mail className="w-5 h-5" />}
                     />
-                    <HealthCard
-                        label="Twilio"
-                        status={health?.services.twilio}
-                        icon={<Phone className="w-5 h-5" />}
-                    />
                 </div>
 
                 {health && (

@@ -38,7 +38,7 @@ _MODEL = "gpt-5.2"  # locked per project requirement
 
 class EventSource(str, Enum):
     EMAIL = "email"
-    DIALPAD = "dialpad"
+    CHAT = "chat"
     MANUAL = "manual"
 
 
@@ -110,7 +110,7 @@ class EscalationOrchestrator:
     """Multi-agent orchestrator for escalation workflow.
 
     Coordinates between specialized agents using OpenAI Agents SDK handoffs:
-    1. Receives incoming event (email, dialpad, manual)
+    1. Receives incoming event (email, chat, manual)
     2. Routes to appropriate triage agent
     3. If escalation needed, generates messaging content
     4. Returns complete decision with audit trail
@@ -210,7 +210,7 @@ HIGH-WEIGHT PHRASES (increase score):
 DOWNGRADE INDICATORS (decrease score):
 "PM", "preventive maintenance", "scheduled", "routine", "cosmetic", "no rush", "when convenient"
 
-DIALPAD EVENTS: Missed calls and voicemails are HIGH priority by default (someone called after hours).
+CHAT EVENTS: Inbound chat sessions after hours are HIGH priority by default (someone reached out after hours).
 
 Always provide clear reasoning for your decision."""
 
@@ -245,11 +245,11 @@ YOUR WORKFLOW:
 4. Compile final decision with all details for audit trail
 
 ESCALATION RULES:
-- Score >= 0.6 OR dialpad events → ESCALATE
+- Score >= 0.6 OR chat events → ESCALATE
 - Score 0.4-0.59 → MONITOR (log but don't wake anyone)
 - Score < 0.4 → IGNORE (non-emergency)
 
-DIALPAD EVENTS (missed calls/voicemails) ALWAYS ESCALATE - someone called after hours for a reason.
+CHAT EVENTS (inbound customer chat) ALWAYS ESCALATE - someone reached out after hours for a reason.
 
 Provide complete audit trail including reasoning at each step."""
 
@@ -263,9 +263,9 @@ Provide complete audit trail including reasoning at each step."""
         """Process an incoming event through the multi-agent system.
 
         Args:
-            event_type: Type of event (email, voicemail, missed_call, manual)
+            event_type: Type of event (email, chat, manual)
             content: The main content to analyze (email body, transcript, etc.)
-            source: Origin of the event (email, dialpad, manual)
+            source: Origin of the event (email, chat, manual)
             metadata: Additional context (sender, timestamp, etc.)
 
         Returns:
@@ -349,17 +349,17 @@ Provide complete audit trail including reasoning at each step."""
         logger.info(f"  Safety Critical: {triage_output.is_safety_critical}")
         logger.info(f"  Reasoning: {triage_output.reasoning[:100]}..." if len(triage_output.reasoning) > 100 else f"  Reasoning: {triage_output.reasoning}")
 
-        # Dialpad events always escalate regardless of content
+        # Chat events always escalate regardless of content
         should_escalate = (
-            source == EventSource.DIALPAD
+            source == EventSource.CHAT
             or triage_output.decision == TriageDecision.ESCALATE
             or triage_output.emergency_score >= 0.6
         )
-        
+
         logger.info("-"*50)
         logger.info(f"[ORCHESTRATOR] Escalation Decision: {'YES - ESCALATING' if should_escalate else 'NO - Not escalating'}")
-        if source == EventSource.DIALPAD:
-            logger.info("  Reason: Dialpad event - auto-escalate")
+        if source == EventSource.CHAT:
+            logger.info("  Reason: Chat event - auto-escalate")
         elif triage_output.emergency_score >= 0.6:
             logger.info(f"  Reason: Score {triage_output.emergency_score:.2f} >= 0.6 threshold")
         else:
@@ -431,10 +431,10 @@ RECEIVED AT: {metadata.get('received_at', 'now')}
             prompt += f"SUBJECT: {metadata.get('subject', 'N/A')}\n"
             prompt += f"FROM: {metadata.get('sender', 'Unknown')}\n"
             prompt += f"\nEMAIL BODY:\n{content}\n"
-        elif source == EventSource.DIALPAD:
-            prompt += f"CALLER: {metadata.get('from_number', 'Unknown')}\n"
-            prompt += f"\nVOICEMAIL TRANSCRIPT:\n{content or 'No transcript available'}\n"
-            prompt += "\nNOTE: Dialpad events (missed calls/voicemails) are HIGH priority by default.\n"
+        elif source == EventSource.CHAT:
+            prompt += f"CUSTOMER: {metadata.get('customer_name') or metadata.get('from_number', 'Unknown')}\n"
+            prompt += f"\nCHAT TRANSCRIPT:\n{content or 'No transcript available'}\n"
+            prompt += "\nNOTE: Chat events (inbound customer sessions) are HIGH priority by default.\n"
         else:
             prompt += f"\nCONTENT:\n{content}\n"
 
@@ -469,12 +469,12 @@ Generate both voice script and SMS message following the requirements."""
         metadata: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Rule-based fallback when AI is unavailable."""
-        # Dialpad always escalates
-        if source == EventSource.DIALPAD:
+        # Chat events always escalate
+        if source == EventSource.CHAT:
             score = 0.8
             decision = "escalate"
             priority = "high"
-            reasoning = "Dialpad event - automatic high priority"
+            reasoning = "Chat event - automatic high priority"
         else:
             score, reasoning = self._keyword_score(content)
             if score >= 0.6:

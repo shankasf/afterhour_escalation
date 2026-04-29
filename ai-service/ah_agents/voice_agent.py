@@ -1,4 +1,4 @@
-"""Voice Agent - Generates voice scripts for Twilio outbound calls."""
+"""Voice Agent - Generates voice scripts for outbound WebRTC calls."""
 
 import logging
 from datetime import datetime
@@ -132,8 +132,8 @@ def _build_prompt(issue: str, time_str: str, name: Optional[str], level: int, so
         parts.append(f"\nEscalation level {level} - previous responders didn't acknowledge.")
     if name:
         parts.append(f"\nAddress responder as: {name}")
-    if source == "dialpad":
-        parts.append("\nOriginated from a missed call/voicemail.")
+    if source == "chat":
+        parts.append("\nOriginated from an inbound customer chat session.")
 
     parts.append("\n\nMUST end with: 'Press 1 to acknowledge and take ownership.'")
     return "".join(parts)

@@ -28,20 +28,6 @@ export interface CreateEmailEventDto {
   extractedContext?: ExtractedContext;
 }
 
-export interface CreateDialpadEventDto {
-  senderPhone: string;
-  senderName?: string;
-  voicemailTranscription?: string;
-  voicemailUrl?: string;
-  receivedAt: Date;
-  callId?: string;
-  state?: string;
-  emergencyScore?: number;
-  priority?: string;
-  triageReasoning?: string;
-  issueSummary?: string;
-}
-
 export interface UpdateEventDto {
   status?: EventStatus;
   acknowledgedById?: string;
@@ -63,7 +49,6 @@ export interface IEventRepository {
   findAcknowledgedEvents(ownerId?: string, limit?: number): Promise<Event[]>;
 
   createEmailEvent(data: CreateEmailEventDto): Promise<Event>;
-  createDialpadEvent(data: CreateDialpadEventDto): Promise<Event>;
 
   update(id: string, data: UpdateEventDto): Promise<Event>;
   updateStatus(id: string, status: EventStatus, userId?: string): Promise<Event>;

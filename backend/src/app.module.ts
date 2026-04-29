@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
@@ -19,6 +19,12 @@ import { MetricsModule } from './metrics/metrics.module';
 import { EmailTrackingModule } from './email-tracking/email-tracking.module';
 import { AppConfigModule } from './common/config/app-config.module';
 import { LogsModule } from './logs/logs.module';
+import { PresenceModule } from './presence/presence.module';
+import { SignalingModule } from './signaling/signaling.module';
+import { CustomerChatModule } from './customer-chat/customer-chat.module';
+import { PushModule } from './push/push.module';
+import { CorrelationIdMiddleware } from './common/logging/correlation-id.middleware';
+import { HttpLoggingMiddleware } from './common/logging/http-logging.middleware';
 
 @Module({
   imports: [
@@ -49,6 +55,19 @@ import { LogsModule } from './logs/logs.module';
     MetricsModule,
     EmailTrackingModule,
     LogsModule,
+    PresenceModule,
+    SignalingModule,
+    CustomerChatModule,
+    PushModule,
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    // CorrelationIdMiddleware must run first so HttpLoggingMiddleware
+    // (and every downstream handler) sees the correlation id in
+    // AsyncLocalStorage.
+    consumer
+      .apply(CorrelationIdMiddleware, HttpLoggingMiddleware)
+      .forRoutes('*');
+  }
+}

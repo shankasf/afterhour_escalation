@@ -7,6 +7,8 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { PresenceService } from '../presence/presence.service';
 
 export interface LiveLogEntry {
   id: string;
@@ -30,14 +32,58 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
 
   private readonly logger = new Logger(WebsocketGateway.name);
   private logIdCounter = 0;
+  private readonly socketUserMap = new Map<string, string>();
+
+  constructor(
+    private readonly jwtService: JwtService,
+    private readonly presenceService: PresenceService,
+  ) {}
 
   handleConnection(client: Socket) {
-    this.logger.log(`Client connected: ${client.id}`);
-    this.emitLog('system', 'info', `Dashboard client connected`, { clientId: client.id });
+    const token = (client.handshake?.auth as any)?.token as string | undefined;
+    if (!token) {
+      this.logger.warn(`Rejecting socket ${client.id}: no auth token`);
+      client.disconnect(true);
+      return;
+    }
+
+    try {
+      const payload = this.jwtService.verify(token);
+      const userId = payload?.sub as string;
+      if (!userId) {
+        client.disconnect(true);
+        return;
+      }
+      this.socketUserMap.set(client.id, userId);
+      this.presenceService.addSession(userId, client.id);
+      client.join(`user:${userId}`);
+      this.logger.log(`Client connected: ${client.id} userId=${userId}`);
+      this.emitLog('system', 'info', `Dashboard client connected`, {
+        clientId: client.id,
+        userId,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Rejecting socket ${client.id}: invalid token (${err instanceof Error ? err.message : 'unknown'})`,
+      );
+      client.disconnect(true);
+    }
   }
 
   handleDisconnect(client: Socket) {
+    const userId = this.socketUserMap.get(client.id);
+    if (userId) {
+      this.presenceService.removeSession(userId, client.id);
+      this.socketUserMap.delete(client.id);
+    }
     this.logger.log(`Client disconnected: ${client.id}`);
+  }
+
+  /**
+   * Emit an event to all sockets connected for a specific user.
+   */
+  emitToUser(userId: string, event: string, payload: any): void {
+    this.server.to(`user:${userId}`).emit(event, payload);
   }
 
   @SubscribeMessage('subscribe')

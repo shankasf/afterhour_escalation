@@ -227,7 +227,7 @@ export default function Metrics() {
 
     const sourceData = [
         { name: 'Email', value: metrics.sourceMetrics.emailEvents, color: '#3b82f6' },
-        { name: 'Phone', value: metrics.sourceMetrics.dialpadEvents, color: '#10b981' },
+        { name: 'Chat', value: metrics.sourceMetrics.chatEvents, color: '#10b981' },
     ];
 
     return (

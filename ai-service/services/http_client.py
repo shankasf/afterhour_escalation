@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 import httpx
 
 from config import get_settings
+from logging_setup import with_correlation_header
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -176,7 +177,7 @@ class ResilientHttpClient:
                 response = await client.request(
                     method=method,
                     url=url,
-                    headers=headers,
+                    headers=with_correlation_header(headers),
                     json=json,
                     timeout=timeout or self.default_timeout,
                 )

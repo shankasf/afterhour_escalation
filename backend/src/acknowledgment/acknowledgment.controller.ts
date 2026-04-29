@@ -1,8 +1,9 @@
-import { Controller, Get, Post, Param, Body, UseGuards, Headers, UnauthorizedException, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, UseGuards, Headers, UnauthorizedException, HttpException, HttpStatus, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiHeader } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
+import { JwtService } from '@nestjs/jwt';
 import { AcknowledgmentService } from './acknowledgment.service';
-import { AckMethod } from '@prisma/client';
+import { AckMethod, UserRole } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 
 @ApiTags('acknowledgments')
@@ -11,10 +12,14 @@ export class AcknowledgmentController {
   constructor(
     private ackService: AcknowledgmentService,
     private configService: ConfigService,
+    private jwtService: JwtService,
   ) {}
 
   private isInternalRequest(apiKey: string | undefined): boolean {
-    const internalKey = this.configService.get<string>('INTERNAL_API_KEY') || 'internal-service-key';
+    const internalKey = this.configService.get<string>('INTERNAL_API_KEY');
+    if (!internalKey) {
+      throw new Error('INTERNAL_API_KEY environment variable is not configured');
+    }
     return apiKey === internalKey;
   }
 
@@ -75,6 +80,41 @@ export class AcknowledgmentController {
   ) {
     return this.ackService.downgradeEvent(eventId, body.userId, body.reason);
   }
+
+  @Post(':id/cancel')
+  @ApiOperation({
+    summary: 'Cancel an acknowledgment and re-escalate (admin or internal-key only)',
+  })
+  @ApiHeader({ name: 'x-internal-key', required: false })
+  async cancel(
+    @Param('id') eventId: string,
+    @Headers('x-internal-key') internalKey?: string,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    const isInternal = internalKey
+      ? this.isInternalRequest(internalKey)
+      : false;
+
+    if (!isInternal) {
+      if (!authHeader) {
+        throw new UnauthorizedException('Authorization required');
+      }
+
+      const bearer = authHeader.replace(/^Bearer\s+/i, '').trim();
+      let payload: { sub?: string; role?: UserRole };
+      try {
+        payload = this.jwtService.verify(bearer);
+      } catch {
+        throw new UnauthorizedException('Invalid token');
+      }
+
+      if (payload.role !== UserRole.admin) {
+        throw new ForbiddenException('Admin role required');
+      }
+    }
+
+    return this.ackService.cancelAcknowledgment(eventId);
+  }
 }
 
 
@@ -91,7 +131,10 @@ export class AcknowledgmentInternalController {
   ) {}
 
   private isInternalRequest(apiKey: string | undefined): boolean {
-    const internalKey = this.configService.get<string>('INTERNAL_API_KEY') || 'internal-service-key';
+    const internalKey = this.configService.get<string>('INTERNAL_API_KEY');
+    if (!internalKey) {
+      throw new Error('INTERNAL_API_KEY environment variable is not configured');
+    }
     return apiKey === internalKey;
   }
 

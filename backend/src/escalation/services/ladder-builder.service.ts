@@ -30,8 +30,21 @@ export class LadderBuilderService {
     // Add fixed contacts
     await this.addFixedContacts(ladder);
 
-    this.logger.debug(`Built escalation ladder with ${ladder.length} contacts`);
+    this.logger.log({
+      message: 'Escalation ladder built',
+      contactCount: ladder.length,
+      contacts: ladder.map((c) => ({
+        userId: c.userId,
+        position: c.position,
+        contactType: c.contactType,
+      })),
+    });
     return ladder;
+  }
+
+  private isUnavailable(user: { unavailableUntil?: Date | null } | null | undefined): boolean {
+    if (!user || !user.unavailableUntil) return false;
+    return new Date(user.unavailableUntil).getTime() > Date.now();
   }
 
   private async addRotationContacts(ladder: EscalationLadderContact[]): Promise<void> {
@@ -49,14 +62,21 @@ export class LadderBuilderService {
     );
 
     if (primaryContact && (primaryContact as any).user) {
-      ladder.push({
-        id: primaryContact.id,
-        userId: primaryContact.userId,
-        name: (primaryContact as any).user.name,
-        phoneNumber: (primaryContact as any).user.phoneNumber || '',
-        position: 1,
-        contactType: 'primary',
-      });
+      const user = (primaryContact as any).user;
+      if (this.isUnavailable(user)) {
+        this.logger.debug(
+          `Skipping primary ${user.name}: unavailable until ${user.unavailableUntil}`,
+        );
+      } else {
+        ladder.push({
+          id: primaryContact.id,
+          userId: primaryContact.userId,
+          name: user.name,
+          phoneNumber: user.phoneNumber || '',
+          position: 1,
+          contactType: 'primary',
+        });
+      }
     }
 
     // Add secondary on-call
@@ -66,14 +86,21 @@ export class LadderBuilderService {
     );
 
     if (secondaryContact && (secondaryContact as any).user) {
-      ladder.push({
-        id: secondaryContact.id,
-        userId: secondaryContact.userId,
-        name: (secondaryContact as any).user.name,
-        phoneNumber: (secondaryContact as any).user.phoneNumber || '',
-        position: 2,
-        contactType: 'secondary',
-      });
+      const user = (secondaryContact as any).user;
+      if (this.isUnavailable(user)) {
+        this.logger.debug(
+          `Skipping secondary ${user.name}: unavailable until ${user.unavailableUntil}`,
+        );
+      } else {
+        ladder.push({
+          id: secondaryContact.id,
+          userId: secondaryContact.userId,
+          name: user.name,
+          phoneNumber: user.phoneNumber || '',
+          position: 2,
+          contactType: 'secondary',
+        });
+      }
     }
   }
 
@@ -81,16 +108,22 @@ export class LadderBuilderService {
     const fixedContacts = await this.escalationRepository.findFixedContacts();
 
     for (const contact of fixedContacts) {
-      if ((contact as any).user) {
-        ladder.push({
-          id: contact.id,
-          userId: contact.userId,
-          name: (contact as any).user.name,
-          phoneNumber: (contact as any).user.phoneNumber || '',
-          position: contact.position,
-          contactType: 'fixed',
-        });
+      const user = (contact as any).user;
+      if (!user) continue;
+      if (this.isUnavailable(user)) {
+        this.logger.debug(
+          `Skipping fixed contact ${user.name}: unavailable until ${user.unavailableUntil}`,
+        );
+        continue;
       }
+      ladder.push({
+        id: contact.id,
+        userId: contact.userId,
+        name: user.name,
+        phoneNumber: user.phoneNumber || '',
+        position: contact.position,
+        contactType: 'fixed',
+      });
     }
   }
 }

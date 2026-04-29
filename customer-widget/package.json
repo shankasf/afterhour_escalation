@@ -1,0 +1,24 @@
+{
+  "name": "@afterhours/customer-widget",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5180 --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --port 5180 --host 0.0.0.0"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "socket.io-client": "^4.8.3"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.47",
+    "@types/react-dom": "^18.2.18",
+    "@vitejs/plugin-react": "^4.2.1",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.11",
+    "vite-plugin-css-injected-by-js": "^3.5.1"
+  }
+}

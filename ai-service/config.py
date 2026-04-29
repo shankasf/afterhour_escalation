@@ -11,20 +11,10 @@ class Settings(BaseSettings):
     openai_voice_model: str = "gpt-realtime-2025-08-28"
     # Voice name for audio rendering (model-dependent)
     openai_voice_name: str = "alloy"
-    
-    # Twilio
-    twilio_account_sid: str = ""
-    twilio_auth_token: str = ""
-    twilio_phone_number: str = ""
-    twilio_webhook_url: str = ""
-    
+
     # Override number for testing - all escalation calls/SMS go here
     escalation_override_number: str = ""
-    
-    # Dialpad
-    dialpad_api_key: str = ""
-    dialpad_webhook_secret: str = ""
-    
+
     # Backend service
     backend_url: str = "http://localhost:3004"
     

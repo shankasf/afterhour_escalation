@@ -10,7 +10,6 @@ import {
   IEventRepository,
   EventFilters,
   CreateEmailEventDto,
-  CreateDialpadEventDto,
   UpdateEventDto,
 } from './event.repository.interface';
 import { EscalationLadderContact } from '../../common/types/event.types';
@@ -139,29 +138,6 @@ export class EventRepository implements IEventRepository {
           : EventStatus.pending,
         emergencyScore: data.emergencyScore,
         extractedContext: data.extractedContext as Prisma.InputJsonValue,
-      },
-    });
-  }
-
-  async createDialpadEvent(data: CreateDialpadEventDto): Promise<Event> {
-    return this.prisma.event.create({
-      data: {
-        source: EventSource.dialpad,
-        senderPhone: data.senderPhone,
-        body: data.voicemailTranscription,
-        voicemailTranscription: data.voicemailTranscription,
-        voicemailUrl: data.voicemailUrl,
-        receivedAt: data.receivedAt,
-        status: EventStatus.escalated,
-        emergencyScore: data.emergencyScore ?? 1.0,
-        aiSummary: data.issueSummary || data.triageReasoning,
-        extractedContext: {
-          callId: data.callId,
-          callState: data.state,
-          senderName: data.senderName,
-          priority: data.priority || 'high',
-          triageReasoning: data.triageReasoning,
-        } as Prisma.InputJsonValue,
       },
     });
   }

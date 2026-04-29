@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
+import { getCorrelationId } from '../common/logging/correlation-id.context';
 
 interface ClassificationResult {
   emergencyScore: number;
@@ -13,13 +14,6 @@ interface ClassificationResult {
     urgencyIndicators?: string[];
   };
   reasoning?: string;
-}
-
-interface EscalationResult {
-  callSid?: string;
-  smsSid?: string;
-  success: boolean;
-  error?: string;
 }
 
 @Injectable()
@@ -34,6 +28,19 @@ export class AiServiceClient {
     this.baseUrl = this.configService.get('AI_SERVICE_URL') || 'http://localhost:8083';
   }
 
+  /**
+   * Build outbound request headers, propagating the active correlation
+   * id (if any) so the AI service can include it in its own logs.
+   */
+  private buildHeaders(): Record<string, string> {
+    const headers: Record<string, string> = {};
+    const correlationId = getCorrelationId();
+    if (correlationId) {
+      headers['x-correlation-id'] = correlationId;
+    }
+    return headers;
+  }
+
   async classifyEmail(data: {
     subject: string;
     body: string;
@@ -43,48 +50,12 @@ export class AiServiceClient {
       const response = await firstValueFrom(
         this.httpService.post(`${this.baseUrl}/classify`, data, {
           timeout: 30000,
+          headers: this.buildHeaders(),
         }),
       );
       return response.data;
     } catch (error) {
       this.logger.error(`Email classification failed: ${error.message}`);
-      throw error;
-    }
-  }
-
-  async processDialpadEvent(data: {
-    phoneNumber: string;
-    transcription?: string;
-  }): Promise<{ shouldEscalate: boolean; context: any }> {
-    try {
-      const response = await firstValueFrom(
-        this.httpService.post(`${this.baseUrl}/dialpad/process`, data, {
-          timeout: 30000,
-        }),
-      );
-      return response.data;
-    } catch (error) {
-      this.logger.error(`Dialpad processing failed: ${error.message}`);
-      // For Dialpad events, always escalate even if AI fails
-      return { shouldEscalate: true, context: {} };
-    }
-  }
-
-  async sendEscalation(data: {
-    eventId: string;
-    escalationLogId: string;
-    contact: { name: string; phone: string };
-    event: any;
-  }): Promise<EscalationResult> {
-    try {
-      const response = await firstValueFrom(
-        this.httpService.post(`${this.baseUrl}/escalate`, data, {
-          timeout: 60000,
-        }),
-      );
-      return response.data;
-    } catch (error) {
-      this.logger.error(`Escalation failed: ${error.message}`);
       throw error;
     }
   }
@@ -98,6 +69,7 @@ export class AiServiceClient {
       const response = await firstValueFrom(
         this.httpService.post(`${this.baseUrl}/voice/generate`, data, {
           timeout: 30000,
+          headers: this.buildHeaders(),
         }),
       );
       return response.data;
@@ -116,6 +88,7 @@ export class AiServiceClient {
       const response = await firstValueFrom(
         this.httpService.post(`${this.baseUrl}/sms/generate`, data, {
           timeout: 10000,
+          headers: this.buildHeaders(),
         }),
       );
       return response.data;

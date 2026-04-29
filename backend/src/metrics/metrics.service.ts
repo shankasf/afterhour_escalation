@@ -46,9 +46,9 @@ export interface ComprehensiveMetrics {
   // Source Metrics
   sourceMetrics: {
     emailEvents: number;
-    dialpadEvents: number;
+    chatEvents: number;
     emailPercentage: number;
-    dialpadPercentage: number;
+    chatPercentage: number;
   };
   // Business Impact Metrics
   businessImpactMetrics: {
@@ -529,14 +529,14 @@ export class MetricsService {
 
     // ===== SOURCE METRICS =====
     const emailEvents = events.filter((e) => e.source === 'email').length;
-    const dialpadEvents = events.filter((e) => e.source === 'dialpad').length;
+    const chatEvents = events.filter((e) => (e.source as string) === 'chat').length;
     const emailPercentage =
       totalEventsProcessed > 0
         ? (emailEvents / totalEventsProcessed) * 100
         : 0;
-    const dialpadPercentage =
+    const chatPercentage =
       totalEventsProcessed > 0
-        ? (dialpadEvents / totalEventsProcessed) * 100
+        ? (chatEvents / totalEventsProcessed) * 100
         : 0;
 
     // ===== BUSINESS IMPACT METRICS =====
@@ -742,9 +742,9 @@ export class MetricsService {
       },
       sourceMetrics: {
         emailEvents,
-        dialpadEvents,
+        chatEvents,
         emailPercentage: Math.round(emailPercentage * 10) / 10,
-        dialpadPercentage: Math.round(dialpadPercentage * 10) / 10,
+        chatPercentage: Math.round(chatPercentage * 10) / 10,
       },
       businessImpactMetrics: {
         afterHoursEventsHandled,

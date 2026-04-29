@@ -1,4 +1,4 @@
-"""Voicemail Analyzer Agent - Analyzes Dialpad voicemail transcripts."""
+"""Voicemail Analyzer Agent - Analyzes voicemail transcripts."""
 
 import logging
 from typing import Optional

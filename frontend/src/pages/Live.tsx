@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
     Phone,
@@ -96,6 +96,12 @@ export default function Live() {
         refetchInterval: 5000,
     });
 
+    // Use ref to avoid stale closures in socket handlers
+    const refetchRef = useRef(refetch);
+    const isPausedRef = useRef(isPaused);
+    useEffect(() => { refetchRef.current = refetch; }, [refetch]);
+    useEffect(() => { isPausedRef.current = isPaused; }, [isPaused]);
+
     const [liveMetrics, setLiveMetrics] = useState<LiveMetrics>({
         activeEscalations: 0,
         callsInProgress: 0,
@@ -132,12 +138,12 @@ export default function Live() {
         // Connection state change logged to console only
     }, [connected]);
 
-    // WebSocket listeners
+    // WebSocket listeners - use refs to avoid stale closures and prevent memory leaks
     useEffect(() => {
         if (!socket) return;
 
         const handleLog = (log: LiveLogEntry) => {
-            if (isPaused) return;
+            if (isPausedRef.current) return;
             const processed = { ...log, timestamp: new Date(log.timestamp) };
             if (log.source === 'ai-service') {
                 setAiLogs(prev => [...prev.slice(-99), processed]);
@@ -146,10 +152,8 @@ export default function Live() {
             }
         };
 
-        socket.on('log:new', handleLog);
-
-        socket.on('escalation:update', (data) => {
-            if (!isPaused) {
+        const handleEscalationUpdate = (data: any) => {
+            if (!isPausedRef.current) {
                 setBackendLogs(prev => [...prev.slice(-99), {
                     id: `esc-${Date.now()}`,
                     timestamp: new Date(),
@@ -159,11 +163,11 @@ export default function Live() {
                     message: `Escalation: ${data.contactName || data.status}`,
                 }]);
             }
-            refetch();
-        });
+            refetchRef.current();
+        };
 
-        socket.on('call:update', (data) => {
-            if (!isPaused) {
+        const handleCallUpdate = (data: any) => {
+            if (!isPausedRef.current) {
                 setBackendLogs(prev => [...prev.slice(-99), {
                     id: `call-${Date.now()}`,
                     timestamp: new Date(),
@@ -173,11 +177,11 @@ export default function Live() {
                     message: `Call ${data.status}: ${data.contactName || 'Unknown'}`,
                 }]);
             }
-            refetch();
-        });
+            refetchRef.current();
+        };
 
-        socket.on('sms:update', (data) => {
-            if (!isPaused) {
+        const handleSmsUpdate = (data: any) => {
+            if (!isPausedRef.current) {
                 setBackendLogs(prev => [...prev.slice(-99), {
                     id: `sms-${Date.now()}`,
                     timestamp: new Date(),
@@ -187,11 +191,11 @@ export default function Live() {
                     message: `SMS ${data.status}`,
                 }]);
             }
-            refetch();
-        });
+            refetchRef.current();
+        };
 
-        socket.on('event:new', (data) => {
-            if (!isPaused) {
+        const handleEventNew = (data: any) => {
+            if (!isPausedRef.current) {
                 setBackendLogs(prev => [...prev.slice(-99), {
                     id: `evt-${Date.now()}`,
                     timestamp: new Date(),
@@ -201,11 +205,11 @@ export default function Live() {
                     message: `New: ${data.subject?.substring(0, 50) || 'Event'}`,
                 }]);
             }
-            refetch();
-        });
+            refetchRef.current();
+        };
 
-        socket.on('event:update', (data) => {
-            if (!isPaused) {
+        const handleEventUpdate = (data: any) => {
+            if (!isPausedRef.current) {
                 setBackendLogs(prev => [...prev.slice(-99), {
                     id: `evtu-${Date.now()}`,
                     timestamp: new Date(),
@@ -215,11 +219,11 @@ export default function Live() {
                     message: `Event: ${data.status}`,
                 }]);
             }
-            refetch();
-        });
+            refetchRef.current();
+        };
 
-        socket.on('acknowledgment:received', (data) => {
-            if (!isPaused) {
+        const handleAckReceived = (data: any) => {
+            if (!isPausedRef.current) {
                 setBackendLogs(prev => [...prev.slice(-99), {
                     id: `ack-${Date.now()}`,
                     timestamp: new Date(),
@@ -229,19 +233,27 @@ export default function Live() {
                     message: `ACK via ${data.method?.toUpperCase()}`,
                 }]);
             }
-            refetch();
-        });
+            refetchRef.current();
+        };
+
+        socket.on('log:new', handleLog);
+        socket.on('escalation:update', handleEscalationUpdate);
+        socket.on('call:update', handleCallUpdate);
+        socket.on('sms:update', handleSmsUpdate);
+        socket.on('event:new', handleEventNew);
+        socket.on('event:update', handleEventUpdate);
+        socket.on('acknowledgment:received', handleAckReceived);
 
         return () => {
-            socket.off('log:new');
-            socket.off('escalation:update');
-            socket.off('call:update');
-            socket.off('sms:update');
-            socket.off('event:new');
-            socket.off('event:update');
-            socket.off('acknowledgment:received');
+            socket.off('log:new', handleLog);
+            socket.off('escalation:update', handleEscalationUpdate);
+            socket.off('call:update', handleCallUpdate);
+            socket.off('sms:update', handleSmsUpdate);
+            socket.off('event:new', handleEventNew);
+            socket.off('event:update', handleEventUpdate);
+            socket.off('acknowledgment:received', handleAckReceived);
         };
-    }, [socket, connected, refetch, isPaused]);
+    }, [socket]);
 
     const selectedEscalationData = escalationData?.escalations?.find(
         (e: ActiveEscalation) => e.eventId === selectedEscalation

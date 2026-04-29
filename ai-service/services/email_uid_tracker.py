@@ -10,6 +10,7 @@ from datetime import datetime
 import httpx
 
 from config import get_settings
+from logging_setup import with_correlation_header
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -27,6 +28,7 @@ class EmailUidTracker:
         self._max_cache_size = max_cache_size
         self._initialized = False
         self._lock = asyncio.Lock()
+        self._pending_saves: Set[asyncio.Task] = set()  # Track pending save tasks
 
     async def _load_from_backend(self) -> None:
         """Load processed UIDs from backend database."""
@@ -34,7 +36,7 @@ class EmailUidTracker:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(
                     f"{settings.backend_url}/api/email-tracking/processed-uids",
-                    headers={"x-internal-key": settings.internal_api_key},
+                    headers=with_correlation_header({"x-internal-key": settings.internal_api_key}),
                 )
                 if response.status_code == 200:
                     data = response.json()
@@ -52,7 +54,7 @@ class EmailUidTracker:
                 response = await client.post(
                     f"{settings.backend_url}/api/email-tracking/mark-processed",
                     json={"uid": uid, "processedAt": datetime.utcnow().isoformat()},
-                    headers={"x-internal-key": settings.internal_api_key},
+                    headers=with_correlation_header({"x-internal-key": settings.internal_api_key}),
                 )
                 return response.status_code in (200, 201)
         except Exception as e:
@@ -103,8 +105,10 @@ class EmailUidTracker:
                 excess = len(self._cache) - (self._max_cache_size // 2)
                 self._cache = set(list(self._cache)[excess:])
 
-            # Persist to backend (non-blocking best effort)
-            asyncio.create_task(self._save_to_backend_safe(uid))
+            # Persist to backend (track task to prevent orphaned tasks)
+            task = asyncio.create_task(self._save_to_backend_safe(uid))
+            self._pending_saves.add(task)
+            task.add_done_callback(self._pending_saves.discard)
 
     async def _save_to_backend_safe(self, uid: str) -> None:
         """Save to backend with error handling."""

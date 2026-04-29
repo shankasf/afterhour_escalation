@@ -38,14 +38,6 @@ export interface AppConfig {
     encryption: string;
   };
 
-  // Twilio
-  twilio: {
-    accountSid: string;
-    authToken: string;
-    phoneNumber: string;
-    webhookUrl: string;
-  };
-
   // Escalation Settings
   escalation: {
     emergencyScoreThreshold: number;
@@ -56,7 +48,6 @@ export interface AppConfig {
   // Feature Flags
   features: {
     emailPollingEnabled: boolean;
-    twilioEnabled: boolean;
     aiServiceEnabled: boolean;
   };
 }
@@ -89,9 +80,9 @@ export class AppConfigService implements OnModuleInit {
       aiServiceUrl: this.env('AI_SERVICE_URL', 'http://localhost:8083'),
       frontendUrl: this.env('FRONTEND_URL', 'http://localhost:3000'),
 
-      jwtSecret: this.env('JWT_SECRET', 'change-me-in-production'),
+      jwtSecret: this.envRequired('JWT_SECRET'),
       jwtExpiresIn: this.env('JWT_EXPIRES_IN', '24h'),
-      internalApiKey: this.env('INTERNAL_API_KEY', 'internal-service-key'),
+      internalApiKey: this.envRequired('INTERNAL_API_KEY'),
 
       databaseUrl: this.env('DATABASE_URL', ''),
 
@@ -111,13 +102,6 @@ export class AppConfigService implements OnModuleInit {
         encryption: this.env('SMTP_ENCRYPTION', 'STARTTLS'),
       },
 
-      twilio: {
-        accountSid: this.env('TWILIO_ACCOUNT_SID', ''),
-        authToken: this.env('TWILIO_AUTH_TOKEN', ''),
-        phoneNumber: this.env('TWILIO_PHONE_NUMBER', ''),
-        webhookUrl: this.env('TWILIO_WEBHOOK_URL', ''),
-      },
-
       escalation: {
         emergencyScoreThreshold: this.dbNumber('emergency_score_threshold', 0.6),
         acknowledgmentTimeoutSeconds: this.dbNumber('acknowledgment_timeout_seconds', 120),
@@ -126,7 +110,6 @@ export class AppConfigService implements OnModuleInit {
 
       features: {
         emailPollingEnabled: this.envBoolean('EMAIL_POLLING_ENABLED', true),
-        twilioEnabled: this.envBoolean('TWILIO_ENABLED', true),
         aiServiceEnabled: this.envBoolean('AI_SERVICE_ENABLED', true),
       },
     };
@@ -181,6 +164,14 @@ export class AppConfigService implements OnModuleInit {
   // Helper methods for reading environment variables
   private env(key: string, defaultValue: string): string {
     return this.configService.get<string>(key) || defaultValue;
+  }
+
+  private envRequired(key: string): string {
+    const value = this.configService.get<string>(key);
+    if (!value) {
+      throw new Error(`Required environment variable ${key} is not set`);
+    }
+    return value;
   }
 
   private envNumber(key: string, defaultValue: number): number {

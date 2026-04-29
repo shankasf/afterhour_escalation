@@ -12,7 +12,7 @@ export interface User {
 
 export interface Event {
   id: string;
-  source: 'EMAIL' | 'DIALPAD' | 'MANUAL';
+  source: 'EMAIL' | 'CHAT' | 'MANUAL' | 'DIALPAD';
   senderEmail?: string;
   senderPhone?: string;
   subject?: string;
@@ -132,8 +132,6 @@ export interface HealthStatus {
     database: boolean;
     aiService: boolean;
     emailPoller: boolean;
-    twilio?: boolean;
-    dialpad?: boolean;
   };
   uptime: number;
   timestamp: string;
@@ -205,9 +203,9 @@ export interface ComprehensiveMetrics {
   };
   sourceMetrics: {
     emailEvents: number;
-    dialpadEvents: number;
+    chatEvents: number;
     emailPercentage: number;
-    dialpadPercentage: number;
+    chatPercentage: number;
   };
   businessImpactMetrics: {
     afterHoursEventsHandled: number;

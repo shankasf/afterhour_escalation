@@ -173,51 +173,6 @@ export class EventsService {
     }
   }
 
-  async createDialpadEvent(data: {
-    senderPhone: string;
-    senderName?: string;
-    voicemailTranscription?: string;
-    voicemailUrl?: string;
-    receivedAt: Date;
-    callId?: string;
-    state?: string;
-    emergencyScore?: number;
-    priority?: string;
-    triageReasoning?: string;
-    issueSummary?: string;
-  }): Promise<Event> {
-    this.logger.log(`Creating Dialpad event from ${data.senderPhone} (state: ${data.state || 'unknown'})`);
-
-    // Dialpad inbound events are always high priority - use provided score or default to 1.0
-    const event = await this.prisma.event.create({
-      data: {
-        source: EventSource.dialpad,
-        senderPhone: data.senderPhone,
-        body: data.voicemailTranscription,
-        voicemailTranscription: data.voicemailTranscription,
-        voicemailUrl: data.voicemailUrl,
-        receivedAt: data.receivedAt,
-        status: EventStatus.escalated, // Always escalate dialpad events
-        emergencyScore: data.emergencyScore ?? 1.0, // High confidence for after-hours calls
-        aiSummary: data.issueSummary || data.triageReasoning,
-        extractedContext: {
-          callId: data.callId,
-          callState: data.state,
-          senderName: data.senderName,
-          priority: data.priority || 'high',
-          triageReasoning: data.triageReasoning,
-        } as any,
-      },
-    });
-
-    this.logger.log(`Created Dialpad event ${event.id} with score ${event.emergencyScore}`);
-    
-    // Emit websocket event for real-time dashboard update
-    this.wsGateway.emitNewEvent(event);
-
-    return event;
-  }
-
   async updateStatus(id: string, status: EventStatus, userId?: string): Promise<Event> {
     const updateData: Prisma.EventUpdateInput = { status };
 

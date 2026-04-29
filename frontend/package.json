@@ -4,9 +4,9 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --port 5175",
+    "dev": "vite --port 5173 --host 0.0.0.0",
     "build": "tsc -b && vite build",
-    "preview": "vite preview --port 5175",
+    "preview": "vite preview --port 5173 --host 0.0.0.0",
     "lint": "eslint ."
   },
   "dependencies": {

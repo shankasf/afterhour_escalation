@@ -17,7 +17,10 @@ export class UsersController {
   ) {}
 
   private isInternalRequest(apiKey: string | undefined): boolean {
-    const internalKey = this.configService.get<string>('INTERNAL_API_KEY') || 'internal-service-key';
+    const internalKey = this.configService.get<string>('INTERNAL_API_KEY');
+    if (!internalKey) {
+      throw new Error('INTERNAL_API_KEY environment variable is not configured');
+    }
     return apiKey === internalKey;
   }
 

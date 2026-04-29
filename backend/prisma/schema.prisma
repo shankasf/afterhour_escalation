@@ -23,6 +23,7 @@ enum UserRole {
 enum EventSource {
   email
   dialpad
+  chat
 
   @@map("event_source")
 }
@@ -84,20 +85,46 @@ enum AlertType {
   @@map("alert_type")
 }
 
+enum ChatSessionStatus {
+  active
+  idle
+  abandoned
+  converted
+  closed
+
+  @@map("chat_session_status")
+}
+
+enum ChatRole {
+  customer
+  agent
+  employee
+
+  @@map("chat_role")
+}
+
+enum ChatModality {
+  text
+  voice
+
+  @@map("chat_modality")
+}
+
 // =====================================================
 // Core Models
 // =====================================================
 
 model User {
-  id           String   @id @default(uuid())
-  name         String   @db.VarChar(255)
-  email        String   @unique @db.VarChar(255)
-  passwordHash String?  @map("password_hash") @db.VarChar(255)
-  phoneNumber  String?  @map("phone_number") @db.VarChar(50)
-  role         UserRole @default(viewer)
-  isActive     Boolean  @default(true) @map("is_active")
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id               String    @id @default(uuid())
+  name             String    @db.VarChar(255)
+  email            String    @unique @db.VarChar(255)
+  passwordHash     String?   @map("password_hash") @db.VarChar(255)
+  phoneNumber      String?   @map("phone_number") @db.VarChar(50)
+  role             UserRole  @default(viewer)
+  isActive         Boolean   @default(true) @map("is_active")
+  unavailableUntil DateTime? @map("unavailable_until") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   // Relations
   primaryRotations       OnCallRotation[]         @relation("PrimaryOnCall")
@@ -109,6 +136,8 @@ model User {
   resolvedAlerts         AdminAlert[]             @relation("ResolvedBy")
   updatedSettings        SystemSetting[]
   escalationLadderConfig EscalationLadderConfig[]
+  chatMessages           ChatMessage[]
+  pushSubscriptions      PushSubscription[]
 
   @@map("users")
 }
@@ -169,10 +198,11 @@ model Event {
   updatedAt                DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   // Relations
-  acknowledgedBy  User?           @relation("AcknowledgedBy", fields: [acknowledgedById], references: [id])
+  acknowledgedBy  User?            @relation("AcknowledgedBy", fields: [acknowledgedById], references: [id])
   escalationLogs  EscalationLog[]
   acknowledgments Acknowledgment[]
   adminAlerts     AdminAlert[]
+  chatSession     ChatSession?
 
   @@index([status])
   @@index([receivedAt])
@@ -181,19 +211,19 @@ model Event {
 }
 
 model EscalationLog {
-  id                    String     @id @default(uuid())
-  eventId               String     @map("event_id")
-  contactId             String     @map("contact_id")
-  userId                String     @map("user_id")
-  attemptNumber         Int        @map("attempt_number")
-  callSid               String?    @map("call_sid") @db.VarChar(100)
-  callStatus            CallStatus @default(not_called) @map("call_status")
-  smsSid                String?    @map("sms_sid") @db.VarChar(100)
-  smsStatus             SmsStatus  @default(not_sent) @map("sms_status")
-  acknowledgmentReceived Boolean   @default(false) @map("acknowledgment_received")
-  acknowledgedAt        DateTime?  @map("acknowledged_at") @db.Timestamptz(6)
-  errorMessage          String?    @map("error_message")
-  createdAt             DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  id                     String     @id @default(uuid())
+  eventId                String     @map("event_id")
+  contactId              String     @map("contact_id")
+  userId                 String     @map("user_id")
+  attemptNumber          Int        @map("attempt_number")
+  callSid                String?    @map("call_sid") @db.VarChar(100)
+  callStatus             CallStatus @default(not_called) @map("call_status")
+  smsSid                 String?    @map("sms_sid") @db.VarChar(100)
+  smsStatus              SmsStatus  @default(not_sent) @map("sms_status")
+  acknowledgmentReceived Boolean    @default(false) @map("acknowledgment_received")
+  acknowledgedAt         DateTime?  @map("acknowledged_at") @db.Timestamptz(6)
+  errorMessage           String?    @map("error_message")
+  createdAt              DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
 
   // Relations
   event   Event             @relation(fields: [eventId], references: [id], onDelete: Cascade)
@@ -224,16 +254,16 @@ model Acknowledgment {
 }
 
 model AdminAlert {
-  id         String    @id @default(uuid())
-  eventId    String?   @map("event_id")
-  alertType  AlertType @map("alert_type")
-  message    String
-  details    Json?
-  alertedAt  DateTime  @default(now()) @map("alerted_at") @db.Timestamptz(6)
-  resolved   Boolean   @default(false)
-  resolvedAt DateTime? @map("resolved_at") @db.Timestamptz(6)
-  resolvedById String? @map("resolved_by")
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  id           String    @id @default(uuid())
+  eventId      String?   @map("event_id")
+  alertType    AlertType @map("alert_type")
+  message      String
+  details      Json?
+  alertedAt    DateTime  @default(now()) @map("alerted_at") @db.Timestamptz(6)
+  resolved     Boolean   @default(false)
+  resolvedAt   DateTime? @map("resolved_at") @db.Timestamptz(6)
+  resolvedById String?   @map("resolved_by")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
   // Relations
   event      Event? @relation(fields: [eventId], references: [id])
@@ -338,15 +368,15 @@ model ProcessedEmailUid {
 // =====================================================
 
 model EscalationLadderConfig {
-  id              String   @id @default(uuid())
-  level           Int      @unique
-  role            String   @db.VarChar(100)
-  userId          String?  @map("user_id")
-  timeoutSeconds  Int      @default(120) @map("timeout_seconds")
-  isRotation      Boolean  @default(false) @map("is_rotation")
-  isActive        Boolean  @default(true) @map("is_active")
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id             String   @id @default(uuid())
+  level          Int      @unique
+  role           String   @db.VarChar(100)
+  userId         String?  @map("user_id")
+  timeoutSeconds Int      @default(120) @map("timeout_seconds")
+  isRotation     Boolean  @default(false) @map("is_rotation")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   // Relations
   user User? @relation(fields: [userId], references: [id])
@@ -354,4 +384,73 @@ model EscalationLadderConfig {
   @@index([level])
   @@index([isActive])
   @@map("escalation_ladder_config")
+}
+
+// =====================================================
+// Chat & Push Notification Models
+// =====================================================
+
+model ChatSession {
+  id             String            @id @default(uuid())
+  sessionToken   String            @unique @map("session_token") @db.VarChar(255)
+  customerName   String?           @map("customer_name") @db.VarChar(255)
+  customerEmail  String?           @map("customer_email") @db.VarChar(255)
+  customerPhone  String?           @map("customer_phone") @db.VarChar(50)
+  ip             String?           @db.VarChar(64)
+  userAgent      String?           @map("user_agent")
+  startedAt      DateTime          @default(now()) @map("started_at") @db.Timestamptz(6)
+  lastSeenAt     DateTime          @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+  status         ChatSessionStatus @default(active)
+  voiceCallCount Int               @default(0) @map("voice_call_count")
+  eventId        String?           @unique @map("event_id")
+
+  // Relations
+  messages          ChatMessage[]
+  pushSubscriptions PushSubscription[]
+  event             Event?             @relation(fields: [eventId], references: [id])
+
+  @@index([sessionToken])
+  @@index([status])
+  @@map("chat_sessions")
+}
+
+model ChatMessage {
+  id         String       @id @default(uuid())
+  sessionId  String       @map("session_id")
+  role       ChatRole
+  userId     String?      @map("user_id")
+  text       String
+  modality   ChatModality @default(text)
+  audioUrl   String?      @map("audio_url") @db.VarChar(500)
+  durationMs Int?         @map("duration_ms")
+  metadata   Json?
+  createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // Relations
+  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User?       @relation(fields: [userId], references: [id])
+
+  @@index([sessionId, createdAt])
+  @@map("chat_messages")
+}
+
+model PushSubscription {
+  id                String    @id @default(uuid())
+  userId            String?   @map("user_id")
+  customerSessionId String?   @map("customer_session_id")
+  origin            String    @db.VarChar(255)
+  endpoint          String    @unique @db.VarChar(500)
+  p256dh            String    @db.VarChar(255)
+  auth              String    @db.VarChar(255)
+  userAgent         String?   @map("user_agent")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastUsedAt        DateTime? @map("last_used_at") @db.Timestamptz(6)
+
+  // Relations
+  user            User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  customerSession ChatSession? @relation(fields: [customerSessionId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([customerSessionId])
+  @@map("push_subscriptions")
 }

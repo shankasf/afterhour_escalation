@@ -1,12 +1,40 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AckMethod, EventStatus } from '@prisma/client';
+import { WebsocketGateway } from '../websocket/websocket.gateway';
 
 @Injectable()
 export class AcknowledgmentService {
   private readonly logger = new Logger(AcknowledgmentService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private wsGateway: WebsocketGateway,
+  ) {}
+
+  async cancelAcknowledgment(eventId: string) {
+    this.logger.log({ message: 'Cancelling acknowledgment', eventId });
+
+    const event = await this.prisma.event.findUnique({
+      where: { id: eventId },
+    });
+    if (!event) {
+      throw new NotFoundException(`Event not found: ${eventId}`);
+    }
+
+    // Audit trail: keep the Acknowledgment row, only flip the Event back.
+    const updated = await this.prisma.event.update({
+      where: { id: eventId },
+      data: {
+        status: EventStatus.escalated,
+        acknowledgedById: null,
+        acknowledgedAt: null,
+      },
+    });
+
+    this.wsGateway.emitEventUpdate(updated);
+    return updated;
+  }
 
   async createAcknowledgment(data: {
     eventId: string;
@@ -15,7 +43,13 @@ export class AcknowledgmentService {
     notes?: string;
     downgradeReason?: string;
   }) {
-    this.logger.log(`Creating acknowledgment for event ${data.eventId}`);
+    this.logger.log({
+      message: 'Creating acknowledgment',
+      eventId: data.eventId,
+      userId: data.userId,
+      method: data.method,
+      isDowngrade: !!data.downgradeReason,
+    });
 
     // Create acknowledgment record
     const ack = await this.prisma.acknowledgment.create({
@@ -42,6 +76,13 @@ export class AcknowledgmentService {
         acknowledgedAt: new Date(),
         downgradeToNonEmergency: !!data.downgradeReason,
       },
+    });
+
+    this.logger.log({
+      message: 'Acknowledgment recorded and event status updated',
+      eventId: data.eventId,
+      userId: data.userId,
+      status: eventStatus,
     });
 
     return ack;
@@ -84,7 +125,11 @@ export class AcknowledgmentService {
     method: AckMethod;
     notes?: string;
   }) {
-    this.logger.log(`Creating acknowledgment by phone for event ${data.eventId}`);
+    this.logger.log({
+      message: 'Acknowledgment flow: by phone',
+      eventId: data.eventId,
+      method: data.method,
+    });
 
     let userId = data.userId;
 
@@ -137,7 +182,12 @@ export class AcknowledgmentService {
     method: string;
     timestamp?: string;
   }) {
-    this.logger.log(`Creating acknowledgment by name for event ${data.eventId}`);
+    this.logger.log({
+      message: 'Acknowledgment flow: by name',
+      eventId: data.eventId,
+      acknowledgedBy: data.acknowledgedBy,
+      method: data.method,
+    });
 
     // Find user by name
     const user = await this.prisma.user.findFirst({

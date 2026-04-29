@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Save, Plus, Trash2, Settings as SettingsIcon, AlertTriangle, Key } from 'lucide-react';
 import api from '../lib/api';
 import { SystemSetting, EmergencyKeyword } from '../types';
+import OnCallReadiness from '../components/OnCallReadiness';
 
 export default function Settings() {
     const queryClient = useQueryClient();
@@ -26,6 +27,9 @@ export default function Settings() {
         },
     });
 
+    // Error state for mutations
+    const [mutationError, setMutationError] = useState<string | null>(null);
+
     // Mutations
     const updateSettingMutation = useMutation({
         mutationFn: async ({ key, value }: { key: string; value: string }) => {
@@ -33,6 +37,10 @@ export default function Settings() {
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['settings'] });
+            setMutationError(null);
+        },
+        onError: (error: any) => {
+            setMutationError(error.response?.data?.message || 'Failed to update setting');
         },
     });
 
@@ -44,6 +52,10 @@ export default function Settings() {
             queryClient.invalidateQueries({ queryKey: ['keywords'] });
             setNewKeyword('');
             setNewKeywordWeight(10);
+            setMutationError(null);
+        },
+        onError: (error: any) => {
+            setMutationError(error.response?.data?.message || 'Failed to create keyword');
         },
     });
 
@@ -53,6 +65,10 @@ export default function Settings() {
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['keywords'] });
+            setMutationError(null);
+        },
+        onError: (error: any) => {
+            setMutationError(error.response?.data?.message || 'Failed to delete keyword');
         },
     });
 
@@ -67,6 +83,22 @@ export default function Settings() {
             <div className="mb-8">
                 <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
                 <p className="text-gray-500">Configure system behavior and escalation rules</p>
+            </div>
+
+            {mutationError && (
+                <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+                    {mutationError}
+                    <button
+                        onClick={() => setMutationError(null)}
+                        className="ml-2 text-red-500 hover:text-red-700"
+                    >
+                        ×
+                    </button>
+                </div>
+            )}
+
+            <div className="mb-6">
+                <OnCallReadiness />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -238,17 +270,6 @@ export default function Settings() {
 
                     <div className="space-y-4">
                         <IntegrationStatus
-                            name="Twilio"
-                            description="Voice calls and SMS"
-                            configured={!!getSetting('twilio_configured')}
-                        />
-                        <IntegrationStatus
-                            name="Dialpad (Optional)"
-                            description="Dialpad call integration"
-                            configured={!!getSetting('dialpad_configured')}
-                            optional
-                        />
-                        <IntegrationStatus
                             name="Email (Microsoft 365)"
                             description="IMAP email monitoring"
                             configured={!!getSetting('email_configured')}
@@ -282,6 +303,12 @@ function SettingField({
 }) {
     const [localValue, setLocalValue] = useState(value);
     const [isDirty, setIsDirty] = useState(false);
+
+    // Sync local value when prop value changes (e.g., after data fetch)
+    useEffect(() => {
+        setLocalValue(value);
+        setIsDirty(false);
+    }, [value]);
 
     const handleSave = () => {
         onChange(localValue);

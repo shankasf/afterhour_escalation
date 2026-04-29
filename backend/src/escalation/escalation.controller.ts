@@ -16,9 +16,12 @@ export class EscalationController {
   @Get('active')
   @ApiOperation({ summary: 'Get all active escalations with live status' })
   async getActiveEscalations() {
-    const escalations = await this.escalationService.getActiveEscalations();
+    const [escalations, count] = await Promise.all([
+      this.escalationService.getActiveEscalations(),
+      this.escalationService.getActiveEscalationCount(),
+    ]);
     return {
-      count: this.escalationService.getActiveEscalationCount(),
+      count,
       escalations,
     };
   }

@@ -8,6 +8,7 @@ import httpx
 from pydantic import BaseModel, Field
 
 from config import get_settings
+from logging_setup import with_correlation_header
 from . import function_tool
 
 logger = logging.getLogger(__name__)
@@ -73,7 +74,7 @@ async def lookup_user_by_phone(phone_number: str) -> UserLookupOutput:
         async with httpx.AsyncClient() as client:
             resp = await client.get(
                 f"{settings.backend_url}/api/users",
-                headers={"x-internal-key": settings.internal_api_key},
+                headers=with_correlation_header({"x-internal-key": settings.internal_api_key}),
                 timeout=10.0,
             )
             if resp.status_code != 200:
@@ -102,7 +103,7 @@ async def find_active_escalation_for_user(user_id: str) -> ActiveEscalationLooku
         async with httpx.AsyncClient() as client:
             resp = await client.get(
                 f"{settings.backend_url}/api/events/active-escalations",
-                headers={"x-internal-key": settings.internal_api_key},
+                headers=with_correlation_header({"x-internal-key": settings.internal_api_key}),
                 timeout=10.0,
             )
             if resp.status_code != 200:
@@ -142,7 +143,7 @@ async def record_internal_ack(event_id: str, user_id: Optional[str], phone_numbe
                     "phoneNumber": phone_number,
                     "method": method,
                 },
-                headers={"x-internal-key": settings.internal_api_key},
+                headers=with_correlation_header({"x-internal-key": settings.internal_api_key}),
                 timeout=10.0,
             )
 
@@ -163,7 +164,7 @@ async def downgrade_latest_owned_event(user_id: str, reason: str = "Downgraded v
             events_resp = await client.get(
                 f"{settings.backend_url}/api/events/acknowledged",
                 params={"ownerId": user_id},
-                headers={"x-internal-key": settings.internal_api_key},
+                headers=with_correlation_header({"x-internal-key": settings.internal_api_key}),
                 timeout=10.0,
             )
             if events_resp.status_code != 200:
@@ -181,7 +182,7 @@ async def downgrade_latest_owned_event(user_id: str, reason: str = "Downgraded v
             resp = await client.post(
                 f"{settings.backend_url}/api/events/{event_id}/downgrade",
                 json={"userId": user_id, "reason": reason},
-                headers={"x-internal-key": settings.internal_api_key},
+                headers=with_correlation_header({"x-internal-key": settings.internal_api_key}),
                 timeout=10.0,
             )
 

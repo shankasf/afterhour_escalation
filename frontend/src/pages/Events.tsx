@@ -21,6 +21,7 @@ import {
 import api from '../lib/api';
 import { Event, PaginatedResponse } from '../types';
 import { formatDateTime, formatRelative } from '../lib/utils';
+import { logger } from '../utils/logger';
 
 const statusConfig: Record<string, { color: string; bg: string; icon: React.ElementType }> = {
     NEW: { color: 'text-blue-700', bg: 'bg-blue-50 border-blue-200', icon: Inbox },
@@ -82,7 +83,7 @@ export default function Events() {
             link.click();
             link.remove();
         } catch (error) {
-            console.error('Export failed:', error);
+            logger.error('Export failed', { error: String((error as Error)?.message ?? error) });
         }
     };
 
@@ -149,7 +150,7 @@ export default function Events() {
                         >
                             <option value="">All Sources</option>
                             <option value="EMAIL">Email</option>
-                            <option value="DIALPAD">Phone</option>
+                            <option value="CHAT">Chat</option>
                         </select>
                     </div>
                 </div>

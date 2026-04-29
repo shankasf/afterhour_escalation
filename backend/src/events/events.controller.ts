@@ -7,7 +7,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { Response } from 'express';
 import { EventsService } from './events.service';
 import { Event, EventSource, EventStatus } from '@prisma/client';
-import { CreateEmailEventDto, CreateDialpadEventDto, UpdateEventStatusDto } from './dto/event.dto';
+import { CreateEmailEventDto, UpdateEventStatusDto } from './dto/event.dto';
 import { ConfigService } from '@nestjs/config';
 
 @ApiTags('events')
@@ -19,7 +19,10 @@ export class EventsController {
   ) {}
 
   private isInternalRequest(apiKey: string | undefined): boolean {
-    const internalKey = this.configService.get<string>('INTERNAL_API_KEY') || 'internal-service-key';
+    const internalKey = this.configService.get<string>('INTERNAL_API_KEY');
+    if (!internalKey) {
+      throw new Error('INTERNAL_API_KEY environment variable is not configured');
+    }
     return apiKey === internalKey;
   }
 
@@ -239,34 +242,6 @@ export class EventsController {
       receivedAt: dto.receivedAt ? new Date(dto.receivedAt) : new Date(),
       emergencyScore: dto.emergencyScore,
       aiSummary: dto.aiSummary,
-    });
-    return this.transformEvent(event);
-  }
-
-  @Post('dialpad')
-  @ApiHeader({ name: 'x-internal-key', required: false })
-  @ApiOperation({ summary: 'Create Dialpad event (from webhook or internal service)' })
-  async createDialpadEvent(
-    @Body() dto: CreateDialpadEventDto,
-    @Headers('x-internal-key') internalKey?: string,
-    @Headers('authorization') authHeader?: string,
-  ) {
-    // Allow internal service calls or JWT auth
-    if (!this.isInternalRequest(internalKey) && !authHeader) {
-      throw new UnauthorizedException('Authorization required');
-    }
-    const event = await this.eventsService.createDialpadEvent({
-      senderPhone: dto.senderPhone,
-      senderName: dto.senderName,
-      voicemailTranscription: dto.voicemailTranscription,
-      voicemailUrl: dto.voicemailUrl,
-      receivedAt: new Date(dto.receivedAt),
-      callId: dto.callId,
-      state: dto.state,
-      emergencyScore: dto.emergencyScore,
-      priority: dto.priority,
-      triageReasoning: dto.triageReasoning,
-      issueSummary: dto.issueSummary,
     });
     return this.transformEvent(event);
   }

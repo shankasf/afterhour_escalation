@@ -7,7 +7,6 @@ specialist agents for:
 - message generation (voice/SMS)
 - escalation operations (backend)
 - acknowledgment processing (backend)
-- dialpad processing (backend)
 
 It does not replace the existing `EscalationOrchestrator` yet; it’s a reusable
 handoff graph that routes can adopt incrementally.
@@ -39,7 +38,6 @@ class HeadRoute(str, Enum):
     MESSAGE_GENERATION = "message_generation"
     ESCALATION_OPS = "escalation_ops"
     ACKNOWLEDGMENT_OPS = "acknowledgment_ops"
-    DIALPAD_OPS = "dialpad_ops"
 
 
 class HeadDecision(BaseModel):
@@ -76,7 +74,6 @@ def create_head_agent():
     # Ops agents (may be None if SDK unavailable)
     from ah_agents.escalation_agent import escalation_ops_agent
     from ah_agents.ack_monitor_agent import acknowledgment_ops_agent
-    from ah_agents.dialpad_agent import dialpad_ops_agent
 
     handoffs = [
         email_triage_agent,
@@ -89,8 +86,6 @@ def create_head_agent():
         handoffs.append(escalation_ops_agent)
     if acknowledgment_ops_agent is not None:
         handoffs.append(acknowledgment_ops_agent)
-    if dialpad_ops_agent is not None:
-        handoffs.append(dialpad_ops_agent)
 
     return Agent(
         name="AfterHoursHeadAgent",
@@ -126,8 +121,16 @@ async def run_head_agent_router(user_input: str, metadata: Optional[Dict[str, An
     if metadata:
         prompt = f"METADATA: {metadata}\n\n{user_input}"
 
+    logger.info(
+        "[HEAD AGENT] Routing user input",
+        extra={"input_len": len(user_input), "has_metadata": bool(metadata)},
+    )
     result = await Runner.run(agent, prompt)
     decision: HeadDecision = result.final_output
+    logger.info(
+        "[HEAD AGENT] Routed",
+        extra={"route": decision.route.value, "reason": decision.reason},
+    )
     return {
         "success": True,
         "decision": decision.model_dump(),

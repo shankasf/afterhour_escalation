@@ -2,7 +2,7 @@
 
 This package provides AI agents for:
 - Email triage and classification
-- Voice script generation for Twilio calls
+- Voice script generation for WebRTC calls
 - SMS message generation
 - Voicemail analysis
 - Acknowledgment monitoring
@@ -39,7 +39,6 @@ from ah_agents.sms_agent import (
     generate_sms,
     SmsAgent,
 )
-from ah_agents.dialpad_agent import DialpadAgent, create_dialpad_ops_agent, get_dialpad_ops_agent, dialpad_ops_agent
 from ah_agents.voicemail_analyzer_agent import (
     create_voicemail_analyzer_agent,
     get_voicemail_analyzer_llm_agent,
@@ -108,10 +107,6 @@ __all__ = [
     "VoiceAgent",
     "get_voice_agent",
     "SmsAgent",
-    "DialpadAgent",
-    "create_dialpad_ops_agent",
-    "get_dialpad_ops_agent",
-    "dialpad_ops_agent",
     "VoicemailAnalyzerAgent",
     "get_voicemail_analyzer_agent",
     "AckMonitorAgent",

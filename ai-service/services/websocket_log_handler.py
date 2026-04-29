@@ -1,13 +1,38 @@
 """
 Custom logging handler that sends logs to backend via HTTP for real-time dashboard display.
+
+Reads structured fields directly from the LogRecord (matching the JSON spec
+emitted by `logging_setup.JsonFormatter`) and forwards them — including
+`correlationId` and any extras — to the backend.
 """
 import logging
 import threading
 import queue
 import time
 import os
-from typing import Optional
+from datetime import datetime
+from typing import Any, Dict, Optional
 import httpx
+
+from logging_setup import get_correlation_id, redact, with_correlation_header
+
+# Standard LogRecord attributes — anything else attached to the record is
+# considered an "extra" we want to forward as structured context.
+_RESERVED_RECORD_ATTRS = {
+    "name", "msg", "args", "levelname", "levelno", "pathname", "filename",
+    "module", "exc_info", "exc_text", "stack_info", "lineno", "funcName",
+    "created", "msecs", "relativeCreated", "thread", "threadName",
+    "processName", "process", "message", "asctime", "taskName",
+}
+
+_PY_LEVEL_TO_SPEC = {
+    logging.DEBUG: 'debug',
+    logging.INFO: 'info',
+    logging.WARNING: 'warn',
+    logging.ERROR: 'error',
+    logging.CRITICAL: 'error',
+}
+
 
 class WebSocketLogHandler(logging.Handler):
     """
@@ -47,26 +72,33 @@ class WebSocketLogHandler(logging.Handler):
         except Exception:
             self.handleError(record)
 
-    def _format_record(self, record: logging.LogRecord) -> dict:
-        """Format a log record into a JSON-serializable dict."""
-        level_map = {
-            logging.DEBUG: 'debug',
-            logging.INFO: 'info',
-            logging.WARNING: 'warn',
-            logging.ERROR: 'error',
-            logging.CRITICAL: 'error',
-        }
+    def _format_record(self, record: logging.LogRecord) -> Dict[str, Any]:
+        """Format a log record into a JSON-serializable dict that matches the shared spec."""
+        # ISO 8601 UTC with trailing Z, millisecond precision.
+        ts = datetime.utcfromtimestamp(record.created).isoformat(timespec="milliseconds") + "Z"
+
+        # Capture any "extra=" fields attached to the record.
+        extras: Dict[str, Any] = {}
+        for attr, val in record.__dict__.items():
+            if attr in _RESERVED_RECORD_ATTRS or attr.startswith("_"):
+                continue
+            extras[attr] = redact(val)
 
         return {
-            'level': level_map.get(record.levelno, 'info'),
-            'message': record.getMessage(),
+            'ts': ts,
+            'timestamp': ts,  # backward-compat with existing backend consumer
+            'level': _PY_LEVEL_TO_SPEC.get(record.levelno, 'info'),
+            'service': 'ai-service',
+            'msg': redact(record.getMessage()),
+            'message': redact(record.getMessage()),  # backward-compat
             'logger': record.name,
-            'timestamp': time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(record.created)),
+            'correlationId': get_correlation_id(),
             'details': {
                 'filename': record.filename,
                 'lineno': record.lineno,
                 'funcName': record.funcName,
-            }
+                **extras,
+            },
         }
 
     def _sender_loop(self):
@@ -113,14 +145,14 @@ class WebSocketLogHandler(logging.Handler):
                     client.post(
                         self.endpoint,
                         json=batch[0],
-                        headers={'x-api-key': self.api_key}
+                        headers=with_correlation_header({'x-api-key': self.api_key})
                     )
                 else:
                     # Batch logs
                     client.post(
                         self.batch_endpoint,
                         json=batch,
-                        headers={'x-api-key': self.api_key}
+                        headers=with_correlation_header({'x-api-key': self.api_key})
                     )
         except Exception as e:
             # Log to stderr to avoid recursion

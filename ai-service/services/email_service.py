@@ -225,7 +225,7 @@ class EmailService:
             if mail:
                 try:
                     mail.logout()
-                except:
+                except Exception:
                     pass
 
     def fetch_latest_email(
@@ -272,9 +272,9 @@ class EmailService:
             if mail:
                 try:
                     mail.logout()
-                except:
+                except Exception:
                     pass
-    
+
     def fetch_emails_since(
         self, 
         since_hours: int = 24, 
@@ -346,9 +346,9 @@ class EmailService:
             if mail:
                 try:
                     mail.logout()
-                except:
+                except Exception:
                     pass
-    
+
     def mark_as_read(self, folder: str, uid: str) -> bool:
         """Mark an email as read."""
         mail = None
@@ -365,9 +365,9 @@ class EmailService:
             if mail:
                 try:
                     mail.logout()
-                except:
+                except Exception:
                     pass
-    
+
     async def fetch_unread_emails_async(
         self, 
         folder: str = "INBOX", 
@@ -511,9 +511,9 @@ class EmailService:
             if server:
                 try:
                     server.quit()
-                except:
+                except Exception:
                     pass
-    
+
     async def send_email_async(
         self,
         to: str,

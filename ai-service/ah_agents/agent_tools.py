@@ -7,6 +7,8 @@ one tool contract layer (queries + Pydantic outputs).
 
 from __future__ import annotations
 
+import logging
+
 from ah_agents.queries.escalation import (
     get_current_rotation,
     get_escalation_contact,
@@ -15,19 +17,21 @@ from ah_agents.queries.escalation import (
     check_event_status,
     stop_escalation,
     start_escalation,
-    notify_call_status,
-    notify_sms_status,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def create_escalation_tools():
+    logger.info(
+        "agent_tools: assembling escalation tool list",
+        extra={"tool_count": 7},
+    )
     return [
         get_current_rotation,
         get_escalation_contact,
         get_escalation_ladder,
         start_escalation,
-        notify_call_status,
-        notify_sms_status,
         log_escalation_attempt,
         check_event_status,
         stop_escalation,

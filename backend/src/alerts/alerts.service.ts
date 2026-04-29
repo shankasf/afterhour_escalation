@@ -53,7 +53,12 @@ export class AlertsService {
     message: string;
     details?: any;
   }): Promise<AdminAlert> {
-    this.logger.warn(`Creating alert: ${data.alertType} - ${data.message}`);
+    this.logger.warn({
+      message: 'Alert created',
+      alertType: data.alertType,
+      eventId: data.eventId,
+      alertMessage: data.message,
+    });
 
     const alert = await this.prisma.adminAlert.create({
       data: {
@@ -70,7 +75,6 @@ export class AlertsService {
       'no_acknowledgment',
       'call_failure',
       'sms_failure',
-      'dialpad_webhook_failure',
     ].includes(data.alertType as string);
 
     if (isUrgent) {
@@ -83,6 +87,11 @@ export class AlertsService {
   }
 
   async resolve(id: string, userId: string): Promise<AdminAlert> {
+    this.logger.log({
+      message: 'Alert resolved (updated)',
+      alertId: id,
+      userId,
+    });
     return this.prisma.adminAlert.update({
       where: { id },
       data: {
@@ -94,12 +103,8 @@ export class AlertsService {
   }
 
   private async sendUrgentNotification(alert: AdminAlert): Promise<void> {
-    // Send email
     await this.sendEmailNotification(alert);
-
-    // TODO: Send SMS to admin via Twilio
-    // This would be implemented in the AI service
-    this.logger.log(`Urgent alert ${alert.id} - SMS notification would be sent`);
+    this.logger.log(`Urgent alert ${alert.id} - email notification dispatched`);
   }
 
   private async sendEmailNotification(alert: AdminAlert): Promise<void> {

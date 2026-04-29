@@ -1,65 +1,47 @@
-import { NestFactory } from '@nestjs/core';
-import { ValidationPipe, ConsoleLogger, LogLevel } from '@nestjs/common';
+import { NestFactory, HttpAdapterHost } from '@nestjs/core';
+import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { WebsocketGateway } from './websocket/websocket.gateway';
+import { JsonLogger } from './common/logging/json-logger';
+import { GlobalExceptionFilter } from './common/logging/global-exception.filter';
 import helmet from 'helmet';
-
-// Custom logger that forwards to WebSocket
-class WebSocketLogger extends ConsoleLogger {
-  private static gateway: WebsocketGateway | null = null;
-
-  static setGateway(gateway: WebsocketGateway) {
-    WebSocketLogger.gateway = gateway;
-  }
-
-  private emitToWebSocket(level: 'info' | 'warn' | 'error' | 'debug', message: string, context?: string) {
-    if (WebSocketLogger.gateway) {
-      const formattedMessage = context ? `[${context}] ${message}` : message;
-      WebSocketLogger.gateway.emitLog('system', level, formattedMessage, { context }, 'backend');
-    }
-  }
-
-  log(message: any, context?: string) {
-    super.log(message, context);
-    this.emitToWebSocket('info', String(message), context);
-  }
-
-  error(message: any, stack?: string, context?: string) {
-    super.error(message, stack, context);
-    this.emitToWebSocket('error', String(message), context);
-  }
-
-  warn(message: any, context?: string) {
-    super.warn(message, context);
-    this.emitToWebSocket('warn', String(message), context);
-  }
-
-  debug(message: any, context?: string) {
-    super.debug(message, context);
-    this.emitToWebSocket('debug', String(message), context);
-  }
-}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
-    bufferLogs: true,  // Buffer logs until custom logger is ready
+    bufferLogs: true, // Buffer logs until custom logger is ready
   });
 
-  // Get WebSocket gateway and set it for logging
+  // Get WebSocket gateway and wire it into the structured logger so log
+  // entries continue to fan out to the live dashboard.
   const wsGateway = app.get(WebsocketGateway);
-  WebSocketLogger.setGateway(wsGateway);
+  JsonLogger.setGateway(wsGateway);
 
-  // Use custom logger that emits to WebSocket
-  const logger = new WebSocketLogger('NestApplication');
+  const logger = new JsonLogger('NestApplication');
   app.useLogger(logger);
 
   // Security
   app.use(helmet());
 
   // CORS
+  // Allowlist: 4 production subdomains + legacy FRONTEND_URL + optional
+  // CORS_ORIGINS env (comma-separated) for deploy-time overrides.
+  const defaultOrigins = [
+    'https://main.amsterdamhostel.cloud',
+    'https://customer.amsterdamhostel.cloud',
+    'https://admin.amsterdamhostel.cloud',
+    'https://technician.amsterdamhostel.cloud',
+  ];
+  const envOrigins = (process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const legacy = process.env.FRONTEND_URL || 'http://localhost:5175';
+  const allowedOrigins = Array.from(
+    new Set<string>([...defaultOrigins, ...envOrigins, legacy]),
+  );
   app.enableCors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:5175',
+    origin: allowedOrigins,
     credentials: true,
   });
 
@@ -74,6 +56,11 @@ async function bootstrap() {
 
   // API prefix
   app.setGlobalPrefix('api');
+
+  // Global exception filter - logs every uncaught exception with
+  // correlation id and request context before responding.
+  const httpAdapterHost = app.get(HttpAdapterHost);
+  app.useGlobalFilters(new GlobalExceptionFilter(httpAdapterHost));
 
   // Swagger documentation
   const config = new DocumentBuilder()

@@ -158,22 +158,23 @@ flowchart TD
 
     wait_cb --> park
 
-    done -- "stop escalation" --> tell_done["tell customer:<br/>tech is on it"]
-    exhausted -- "alert admin" --> tell_done
+    done -- "stop escalation" --> tell_ack["tell customer:<br/>tech accepted,<br/>follow-up coming"]
+    exhausted -- "alert admin" --> tell_exh["tell customer:<br/>couldn't reach tech,<br/>escalating to backup"]
 
     tell_blocked --> END_a([end])
-    tell_done --> END_done([end])
+    tell_ack --> END_ack([end])
+    tell_exh --> END_exh([end])
 
     classDef terminal fill:#eee,stroke:#888,stroke-dasharray:3 3;
     classDef park fill:#fff4d6,stroke:#c79100;
     classDef llm fill:#e8f1ff,stroke:#1d4ed8;
     classDef tech fill:#fde2e2,stroke:#b91c1c;
     classDef cust fill:#dcfce7,stroke:#15803d;
-    class START,END_chat,END_closed,END_a,END_done terminal;
+    class START,END_chat,END_closed,END_a,END_ack,END_exh terminal;
     class park park;
     class triage,interpret,chat llm;
     class planner,outreach,park,interpret,wait_cb,done,exhausted,next_tech tech;
-    class chat,tell_blocked,tell_done cust;
+    class chat,tell_blocked,tell_ack,tell_exh cust;
 ```
 
 The graph pauses at **wait for tech reply** (`interrupt_before` in code) until

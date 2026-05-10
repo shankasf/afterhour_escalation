@@ -86,23 +86,23 @@ edges; dashed arrows are conditional routes keyed off `state.status` /
 ```mermaid
 flowchart TD
     START([START]) --> intake
-    intake -. source==chat .-> customer_chat_dialog
-    intake -. else .-> triage
-    customer_chat_dialog -. triage.decision==escalate .-> triage
-    customer_chat_dialog -. else .-> END1([END])
+    intake -. "source: chat" .-> customer_chat_dialog
+    intake -. "else" .-> triage
+    customer_chat_dialog -. "decision: escalate" .-> triage
+    customer_chat_dialog -. "else" .-> END1([END])
     triage --> after_hours_gate
-    after_hours_gate -. in window .-> rotation_planner
-    after_hours_gate -. after_hours_blocked .-> customer_status_update
-    after_hours_gate -. closed .-> END2([END])
+    after_hours_gate -. "in window" .-> rotation_planner
+    after_hours_gate -. "after_hours_blocked" .-> customer_status_update
+    after_hours_gate -. "closed" .-> END2([END])
     rotation_planner --> outreach
-    outreach -. exhausted .-> exhaustion
-    outreach -. else .-> wait_for_ack
+    outreach -. "exhausted" .-> exhaustion
+    outreach -. "else" .-> wait_for_ack
     wait_for_ack -->|interrupt_before| response_interpreter
-    response_interpreter -. acknowledged .-> resolution
-    response_interpreter -. awaiting_callback .-> callback_handler
-    response_interpreter -. exhausted .-> exhaustion
-    response_interpreter -. outreach .-> outreach
-    response_interpreter -. else .-> wait_for_ack
+    response_interpreter -. "acknowledged" .-> resolution
+    response_interpreter -. "awaiting_callback" .-> callback_handler
+    response_interpreter -. "exhausted" .-> exhaustion
+    response_interpreter -. "outreach" .-> outreach
+    response_interpreter -. "else" .-> wait_for_ack
     callback_handler --> customer_callback
     customer_callback --> wait_for_ack
     resolution --> customer_status_update

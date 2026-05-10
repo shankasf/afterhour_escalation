@@ -113,57 +113,89 @@ enabled when `LANGSMITH_TRACING=true`.
 ## LangGraph Flow
 
 The AI service is a single `StateGraph` (`ai-service/graph/graph.py`) over an
-`IncidentState`, checkpointed in Postgres. Solid arrows are unconditional
-edges; dashed arrows are conditional routes keyed off `state.status` /
-`state.source` / `triage.decision`.
+`IncidentState`, checkpointed in Postgres. The thread id is the event id, so
+every inbound webhook (Twilio DTMF, SMS reply, customer chat message,
+WebRTC `call_accepted`/`hangup`) resumes the same graph from where it parked.
+
+**Three entry shapes feed one graph:**
+- **Email** — `email_poller` (IMAP, 30s) → `post_event(kind=email_received)`
+- **Customer chat** — widget WS → `post_event(kind=customer_chat_*)` — runs a
+  conversational `customer_chat_dialog` loop before joining the escalation path
+- **Manual / API** — `POST /escalate/orchestrated` from backend Bull jobs
 
 ```mermaid
 flowchart TD
     START([START]) --> intake
-    intake -. "source: chat" .-> customer_chat_dialog
-    intake -. "else" .-> triage
-    customer_chat_dialog -. "decision: escalate" .-> triage
-    customer_chat_dialog -. "else" .-> END1([END])
-    triage --> after_hours_gate
-    after_hours_gate -. "in window" .-> rotation_planner
-    after_hours_gate -. "after_hours_blocked" .-> customer_status_update
-    after_hours_gate -. "closed" .-> END2([END])
-    rotation_planner --> outreach
-    outreach -. "exhausted" .-> exhaustion
-    outreach -. "else" .-> wait_for_ack
-    wait_for_ack -->|interrupt_before| response_interpreter
-    response_interpreter -. "acknowledged" .-> resolution
-    response_interpreter -. "awaiting_callback" .-> callback_handler
-    response_interpreter -. "exhausted" .-> exhaustion
-    response_interpreter -. "outreach" .-> outreach
-    response_interpreter -. "else" .-> wait_for_ack
-    callback_handler --> customer_callback
-    customer_callback --> wait_for_ack
-    resolution --> customer_status_update
-    exhaustion --> customer_status_update
-    customer_status_update --> END3([END])
+
+    intake -. "source=chat" .-> chat[customer_chat_dialog]
+    intake -. "source=email/manual" .-> triage
+
+    chat -- "more turns needed" --> chat
+    chat -. "done && triage.decision=escalate" .-> triage
+    chat -. "done && decision in ignore/monitor" .-> END_chat([END])
+
+    triage --> gate[after_hours_gate]
+
+    gate -. "outside 00:00–07:00 ET<br/>→ after_hours_blocked" .-> status_after_hours[customer_status_update]
+    gate -. "in window, decision≠escalate<br/>→ closed" .-> END_closed([END])
+    gate -. "in window, decision=escalate<br/>→ outreach" .-> planner[rotation_planner]
+
+    planner -- "builds ladder<br/>cursor=0" --> outreach
+
+    outreach -. "cursor ≥ ladder.length<br/>→ exhausted" .-> exhaustion
+    outreach -- "voice script + Twilio call<br/>awaiting=ack, +120s deadline" --> park
+
+    park["wait_for_ack<br/>(interrupt_before — graph suspends)"] -->|webhook resumes| interpret[response_interpreter]
+
+    interpret -. "intent=ack" .-> resolution
+    interpret -. "intent=callback" .-> callback_handler
+    interpret -. "intent=decline/no_answer/unknown<br/>cursor += 1" .-> outreach
+
+    callback_handler -- "awaiting=callback<br/>+10 min" --> customer_callback
+    customer_callback -- "awaiting=callback<br/>+15 min" --> park
+
+    resolution -- "stop_escalation('acknowledged')" --> status_done[customer_status_update]
+    exhaustion -- "stop_escalation('ladder_exhausted')" --> status_done
+
+    status_after_hours --> END_a([END])
+    status_done --> END_done([END])
 
     classDef terminal fill:#eee,stroke:#888,stroke-dasharray:3 3;
-    class START,END1,END2,END3 terminal;
+    classDef park fill:#fff4d6,stroke:#c79100;
+    classDef llm fill:#e8f1ff,stroke:#1d4ed8;
+    class START,END_chat,END_closed,END_a,END_done terminal;
+    class park park;
+    class triage,chat,outreach,interpret llm;
 ```
+
+Blue nodes call OpenAI; the amber node is the suspend point (the compile is
+`interrupt_before=["wait_for_ack"]`, so the graph blocks here until the next
+webhook arrives and `post_event` resumes the thread).
 
 ### Node responsibilities
 
-| Node                     | What it does                                                                 |
-|--------------------------|------------------------------------------------------------------------------|
-| `intake`                 | Normalizes the inbound event (email / Dialpad / chat) into `IncidentState`.  |
-| `triage`                 | LLM scores urgency 0–1, sets `triage.decision = escalate / ignore`.          |
-| `customer_chat_dialog`   | Two-way chat turn with the customer; may escalate or end the run.            |
-| `after_hours_gate`       | Checks coverage window; routes to ladder, customer update, or close.         |
-| `rotation_planner`       | Builds the escalation ladder from on-call rotation + fixed contacts.         |
-| `outreach`               | Places Twilio call + SMS for the current ladder level.                       |
-| `wait_for_ack`           | `interrupt_before` pause — graph suspends until an ack/callback webhook.     |
-| `response_interpreter`   | Reads webhook result; decides ack, callback, retry, advance, or exhaust.     |
-| `callback_handler`       | Records an on-call callback promise and schedules the customer callback.     |
-| `customer_callback`      | Calls the customer back, then re-enters `wait_for_ack`.                      |
-| `resolution`             | Marks incident acknowledged and prepares the closing customer message.       |
-| `exhaustion`             | All levels failed — creates `AdminAlert` and prepares failure message.       |
-| `customer_status_update` | Sends the final SMS/email to the customer and terminates the run.            |
+| Node                     | What it actually does (from the source)                                                          |
+|--------------------------|--------------------------------------------------------------------------------------------------|
+| `intake`                 | Normalizes payload; sets `source` from `channel_event.kind` (`customer_chat*` / `email_received`).|
+| `customer_chat_dialog`   | Two-way LLM chat; when LLM marks `done=true`, runs **one-shot triage from transcript**.          |
+| `triage`                 | LLM → `{decision, priority, emergency_score, is_safety_critical}`. Score ≥0.5 = escalate, 0.3–0.5 = monitor, <0.3 = ignore. |
+| `after_hours_gate`       | `services.after_hours.should_escalate_now`: outside coverage → `after_hours_blocked`; in window but not escalating → `closed`; else → `outreach`. |
+| `rotation_planner`       | Builds ladder: rotation (primary/secondary) + fixed-level fallback contacts.                     |
+| `outreach`               | Generates 35–50 word voice script (LLM), `start_escalation`, `log_escalation_attempt`, `dispatch_call`, sets `awaiting=ack`, +120s deadline. |
+| `wait_for_ack`           | **Park.** `interrupt_before` halts the graph until an external webhook resumes the thread.        |
+| `response_interpreter`   | LLM classifies responder reply → `ack` / `decline` / `callback` / `no_answer` / `unknown`. Timeout/empty input short-circuits to `no_answer`. |
+| `callback_handler`       | Sets `awaiting=callback`, deadline +10 min.                                                       |
+| `customer_callback`      | Sets `awaiting=callback`, deadline +15 min, parks back at `wait_for_ack`.                         |
+| `resolution`             | `stop_escalation('acknowledged_by_responder')`, status → `resolved`.                              |
+| `exhaustion`             | `stop_escalation('ladder_exhausted')`, status → `exhausted` (backend may create `AdminAlert`).    |
+| `customer_status_update` | Sends a status-tailored message back to the customer (only if `raw.session_token` is set).        |
+
+### State at a glance
+
+`IncidentState` (`ai-service/graph/state.py`) carries the run: `event_id`,
+`source`, `triage`, `ladder`, `cursor`, `attempts[]`, `conversation_log[]`,
+`awaiting` (`ack`/`callback`), `awaiting_deadline`, and `status` (the field
+every conditional edge keys off).
 
 ### Lifecycle
 
@@ -173,9 +205,9 @@ flowchart LR
     B --> C{DATABASE_URL?}
     C -- yes --> D[AsyncPostgresSaver<br/>+ setup]
     C -- no --> E[MemorySaver]
-    D --> F[build_graph<br/>StateGraph.compile]
+    D --> F[build_graph<br/>StateGraph.compile<br/>interrupt_before=wait_for_ack]
     E --> F
-    F --> G[get_graph used by<br/>/classify/orchestrated<br/>/escalate/orchestrated<br/>/twilio/* /dialpad webhooks]
+    F --> G[get_graph used by<br/>/classify/orchestrated<br/>/escalate/orchestrated<br/>/twilio/* /dialpad /chat webhooks]
     G --> H[FastAPI shutdown] --> I[close_graph]
 ```
 

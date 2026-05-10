@@ -2,10 +2,9 @@
 from __future__ import annotations
 
 import json
-import os
-from openai import AsyncOpenAI
 from langchain_core.runnables import RunnableConfig
 
+from graph.openai_client import get_openai_client, get_openai_model
 from graph.state import IncidentState
 from graph.tools import record_internal_ack
 
@@ -30,9 +29,9 @@ async def response_interpreter(state: IncidentState, config: RunnableConfig) -> 
         intent = "no_answer"
         notes = "timeout or empty transcript"
     else:
-        client = AsyncOpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        client = get_openai_client()
         resp = await client.chat.completions.create(
-            model=os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
+            model=get_openai_model(),
             response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": _INTERPRET_INSTRUCTIONS},
@@ -54,14 +53,25 @@ async def response_interpreter(state: IncidentState, config: RunnableConfig) -> 
             user_id=attempts[-1].contact_user_id if attempts else None,
             phone_number=None, method="voice_webrtc",
         )
-        return {"attempts": attempts, "awaiting": None, "status": "acknowledged"}
+        return {
+            "attempts": attempts,
+            "awaiting": None,
+            "status": "acknowledged",
+            "channel_event": None,
+        }
     if intent == "callback":
-        return {"attempts": attempts, "awaiting": "callback", "status": "awaiting_callback"}
+        return {
+            "attempts": attempts,
+            "awaiting": "callback",
+            "status": "awaiting_callback",
+            "channel_event": None,
+        }
     return {
         "attempts": attempts,
         "cursor": state.get("cursor", 0) + 1,
         "awaiting": None,
         "status": "outreach",
+        "channel_event": None,
     }
 
 

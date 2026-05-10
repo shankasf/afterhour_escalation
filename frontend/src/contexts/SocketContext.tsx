@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useAuth } from './AuthContext';
+import { API_BASE_URL } from '../lib/api';
 import { logger } from '../utils/logger';
 
 interface SocketContextType {
@@ -26,9 +27,10 @@ export function SocketProvider({ children }: { children: ReactNode }) {
         }
 
         const token = localStorage.getItem('token');
-        const newSocket = io('/', {
+        const newSocket = io(API_BASE_URL, {
             auth: { token },
             transports: ['websocket', 'polling'],
+            withCredentials: true,
         });
 
         newSocket.on('connect', () => {

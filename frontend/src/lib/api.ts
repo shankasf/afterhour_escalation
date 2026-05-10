@@ -1,12 +1,11 @@
 import axios from 'axios';
 import { getCorrelationId } from '../utils/logger';
 
-const baseURL = import.meta.env.VITE_API_URL
-  ? `${import.meta.env.VITE_API_URL}/api`
-  : '/api';
+export const API_BASE_URL =
+  import.meta.env.VITE_API_URL || 'https://api.amsterdamhostel.cloud';
 
 const api = axios.create({
-  baseURL,
+  baseURL: `${API_BASE_URL}/api`,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -32,12 +31,7 @@ api.interceptors.response.use(
   }
 );
 
-export const API_BASE_URL =
-  import.meta.env.VITE_API_URL || 'https://api.amsterdamhostel.cloud';
 export const AI_SERVICE_URL =
   import.meta.env.VITE_AI_SERVICE_URL || 'https://ai.amsterdamhostel.cloud';
-export const SIGNALING_WS_URL =
-  import.meta.env.VITE_SIGNALING_WS_URL ||
-  'wss://api.amsterdamhostel.cloud/signaling';
 
 export default api;

@@ -5,6 +5,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 from agents import Agent, Runner
+from services.agent_tracking import isoformat, publish_agent_trace, utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,7 @@ get_sms_agent = create_sms_agent
 
 async def generate_sms(event_id: str, issue_description: str, received_at: str = "") -> dict:
     """Generate an SMS message for escalation."""
+    started_at = utc_now()
     logger.info("=" * 60)
     logger.info("[SMS AGENT] Generating SMS message")
     logger.info(f"  Event ID: {event_id}")
@@ -62,26 +64,90 @@ async def generate_sms(event_id: str, issue_description: str, received_at: str =
         output: SmsOutput = result.final_output
         message = (output.message or "").strip()
 
-        # Ensure ACK instruction
-        if "reply ack" not in message.lower():
-            message = message + " Reply ACK to accept."
+        # Normalize ACK instruction: strip any existing variant, then re-append canonically
+        # so length-truncation never cuts the call-to-action.
+        suffix = " Reply ACK to accept."
+        idx = message.lower().rfind("reply ack")
+        if idx >= 0:
+            message = message[:idx].rstrip(". -")
 
-        # Ensure <= 160 chars
-        if len(message) > 160:
-            suffix = " Reply ACK to accept."
-            if "reply ack" in message.lower():
-                message = message[:160].rstrip()
-            else:
-                room = 160 - len(suffix)
-                message = (message[: max(0, room)].rstrip(". -") + suffix).strip()
+        if len(message) + len(suffix) > 160:
+            room = 160 - len(suffix)
+            message = message[: max(0, room)].rstrip(". -")
+        message = (message + suffix).strip()
 
         logger.info(f"[SMS AGENT] AI Generated message:")
         logger.info(f"  {message}")
         logger.info("=" * 60)
 
+        await publish_agent_trace(
+            {
+                "traceId": f"sms_message_{event_id}",
+                "eventId": event_id,
+                "threadId": event_id,
+                "project": "after-hours-agent",
+                "title": "SMS escalation message",
+                "source": "sms",
+                "status": "success",
+                "latencyMs": int((utc_now() - started_at).total_seconds() * 1000),
+                "metadata": {
+                    "event_id": event_id,
+                    "thread_id": event_id,
+                    "session_id": event_id,
+                    "agent": "SmsAgent",
+                },
+                "tags": ["production", "after-hours-agent", "sms", "llm"],
+                "startedAt": isoformat(started_at),
+                "endedAt": isoformat(utc_now()),
+                "spans": [
+                    {
+                        "spanId": f"sms_message_{event_id}_llm",
+                        "name": "sms_message_generation",
+                        "runType": "llm",
+                        "status": "success",
+                        "inputs": {"issue_description": issue_description},
+                        "outputs": {"length": len(message), "generated_by": "ai"},
+                    }
+                ],
+            }
+        )
+
         return {"message": message, "generated_by": "ai"}
     except Exception as e:
         logger.error(f"[SMS AGENT] Message generation failed: {e}")
+        await publish_agent_trace(
+            {
+                "traceId": f"sms_message_{event_id}",
+                "eventId": event_id,
+                "threadId": event_id,
+                "project": "after-hours-agent",
+                "title": "SMS escalation message",
+                "source": "sms",
+                "status": "error",
+                "latencyMs": int((utc_now() - started_at).total_seconds() * 1000),
+                "errorMessage": str(e),
+                "metadata": {
+                    "event_id": event_id,
+                    "thread_id": event_id,
+                    "session_id": event_id,
+                    "agent": "SmsAgent",
+                    "fallback": "template",
+                },
+                "tags": ["production", "after-hours-agent", "sms", "fallback"],
+                "startedAt": isoformat(started_at),
+                "endedAt": isoformat(utc_now()),
+                "spans": [
+                    {
+                        "spanId": f"sms_message_{event_id}_fallback",
+                        "name": "sms_message_fallback",
+                        "runType": "llm",
+                        "status": "error",
+                        "inputs": {"issue_description": issue_description},
+                        "outputs": {"error": str(e)},
+                    }
+                ],
+            }
+        )
         return {"message": _template_message(issue_description, time_str), "generated_by": "template"}
 
 

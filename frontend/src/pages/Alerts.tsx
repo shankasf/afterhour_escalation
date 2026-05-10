@@ -10,7 +10,7 @@ import {
     RefreshCw,
 } from 'lucide-react';
 import api from '../lib/api';
-import { AdminAlert, HealthStatus } from '../types';
+import { AdminAlert, HealthStatus, ServiceHealth } from '../types';
 import { formatDateTime, formatRelative } from '../lib/utils';
 
 export default function Alerts() {
@@ -184,29 +184,34 @@ function HealthCard({
     icon,
 }: {
     label: string;
-    status?: boolean;
+    status?: ServiceHealth;
     icon: React.ReactNode;
 }) {
-    const isHealthy = status === true;
-    const isUnknown = status === undefined;
+    const state = status?.status;
+    const tone =
+        state === 'healthy'
+            ? { bg: 'bg-green-50 border-green-200', fg: 'text-green-600', text: 'Healthy' }
+            : state === 'degraded'
+                ? { bg: 'bg-yellow-50 border-yellow-200', fg: 'text-yellow-600', text: 'Degraded' }
+                : state === 'unhealthy'
+                    ? { bg: 'bg-red-50 border-red-200', fg: 'text-red-600', text: 'Unhealthy' }
+                    : { bg: 'bg-gray-50 border-gray-200', fg: 'text-gray-500', text: 'Unknown' };
+
+    const detail =
+        status?.latency != null
+            ? `${status.latency} ms`
+            : status?.lastPoll
+                ? `last poll ${new Date(status.lastPoll).toLocaleTimeString()}`
+                : null;
 
     return (
-        <div className={`p-4 rounded-lg border ${isUnknown
-                ? 'bg-gray-50 border-gray-200'
-                : isHealthy
-                    ? 'bg-green-50 border-green-200'
-                    : 'bg-red-50 border-red-200'
-            }`}>
+        <div className={`p-4 rounded-lg border ${tone.bg}`}>
             <div className="flex items-center gap-2 mb-2">
-                <span className={isUnknown ? 'text-gray-400' : isHealthy ? 'text-green-600' : 'text-red-600'}>
-                    {icon}
-                </span>
+                <span className={tone.fg}>{icon}</span>
                 <span className="text-sm font-medium">{label}</span>
             </div>
-            <p className={`text-sm ${isUnknown ? 'text-gray-500' : isHealthy ? 'text-green-600' : 'text-red-600'
-                }`}>
-                {isUnknown ? 'Unknown' : isHealthy ? 'Healthy' : 'Unhealthy'}
-            </p>
+            <p className={`text-sm ${tone.fg}`}>{tone.text}</p>
+            {detail && <p className="text-xs text-gray-400 mt-1">{detail}</p>}
         </div>
     );
 }

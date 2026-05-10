@@ -4,8 +4,9 @@ import logging
 import os
 from typing import Optional
 
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.graph import END, START, StateGraph
-from langgraph.checkpoint.postgres import PostgresSaver
 
 from graph.state import IncidentState
 from graph.nodes import (
@@ -68,7 +69,7 @@ def _route_after_interpret(state: IncidentState) -> str:
     return "wait_for_ack"
 
 
-def build_graph(checkpointer) -> "StateGraph":
+def build_graph(checkpointer):
     g = StateGraph(IncidentState)
 
     g.add_node("intake", intake)
@@ -117,26 +118,53 @@ def build_graph(checkpointer) -> "StateGraph":
 
 _compiled = None
 _checkpointer_cm = None
+_checkpointer = None
 
 
-def get_graph():
-    global _compiled, _checkpointer_cm
+async def init_graph() -> None:
+    """Initialize the LangGraph checkpointer + compiled graph for the FastAPI lifespan.
+
+    Idempotent: subsequent calls return immediately.
+    """
+    global _compiled, _checkpointer_cm, _checkpointer
     if _compiled is not None:
-        return _compiled
+        return
 
     db_url = os.environ.get("DATABASE_URL")
     if db_url:
-        _checkpointer_cm = PostgresSaver.from_conn_string(db_url)
-        checkpointer = _checkpointer_cm.__enter__()
+        cm = AsyncPostgresSaver.from_conn_string(db_url)
+        checkpointer = await cm.__aenter__()
         try:
-            checkpointer.setup()
-        except Exception as e:
-            logger.warning("PostgresSaver.setup() failed (may already exist): %s", e)
+            await checkpointer.setup()
+        except Exception as exc:
+            logger.warning("AsyncPostgresSaver.setup() failed (may already exist): %s", exc)
+        _checkpointer_cm = cm
+        _checkpointer = checkpointer
+        logger.info("LangGraph checkpointer: AsyncPostgresSaver")
     else:
-        # Fall back to in-memory if no DATABASE_URL - useful for local boot/import checks.
-        from langgraph.checkpoint.memory import MemorySaver
-        checkpointer = MemorySaver()
-        logger.warning("DATABASE_URL not set; using in-memory checkpointer")
+        _checkpointer = MemorySaver()
+        logger.warning("DATABASE_URL not set; using in-memory checkpointer (state lost on restart)")
 
-    _compiled = build_graph(checkpointer)
+    _compiled = build_graph(_checkpointer)
+
+
+async def close_graph() -> None:
+    """Tear down the checkpointer connection on shutdown."""
+    global _compiled, _checkpointer_cm, _checkpointer
+    if _checkpointer_cm is not None:
+        try:
+            await _checkpointer_cm.__aexit__(None, None, None)
+        except Exception as exc:
+            logger.warning("Error closing checkpointer: %s", exc)
+        _checkpointer_cm = None
+    _checkpointer = None
+    _compiled = None
+
+
+def get_graph():
+    """Return the compiled graph. Must be called after init_graph()."""
+    if _compiled is None:
+        raise RuntimeError(
+            "LangGraph not initialized. init_graph() must be awaited at FastAPI startup."
+        )
     return _compiled

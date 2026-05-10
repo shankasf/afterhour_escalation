@@ -2,11 +2,10 @@
 from __future__ import annotations
 
 import json
-import os
-from datetime import datetime, timedelta
-from openai import AsyncOpenAI
+from datetime import datetime, timedelta, timezone
 from langchain_core.runnables import RunnableConfig
 
+from graph.openai_client import get_openai_client, get_openai_model
 from graph.state import Attempt, IncidentState
 from graph.tools import dispatch_call, log_escalation_attempt, start_escalation
 
@@ -34,15 +33,15 @@ async def outreach(state: IncidentState, config: RunnableConfig) -> dict:
     triage = state.get("triage")
     issue = triage.issue_summary if triage else "after-hours service request"
 
-    client = AsyncOpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    client = get_openai_client()
     resp = await client.chat.completions.create(
-        model=os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
+        model=get_openai_model(),
         response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": _VOICE_INSTRUCTIONS},
             {"role": "user", "content": json.dumps({
                 "issue": issue, "responder": contact.name, "level": contact.level,
-                "time": datetime.utcnow().isoformat(),
+                "time": datetime.now(timezone.utc).isoformat(),
             })},
         ],
     )
@@ -66,6 +65,6 @@ async def outreach(state: IncidentState, config: RunnableConfig) -> dict:
     return {
         "attempts": (state.get("attempts") or []) + [attempt],
         "awaiting": "ack",
-        "awaiting_deadline": datetime.utcnow() + timedelta(seconds=120),
+        "awaiting_deadline": datetime.now(timezone.utc) + timedelta(seconds=120),
         "status": "awaiting_ack",
     }

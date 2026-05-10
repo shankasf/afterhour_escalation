@@ -2,7 +2,8 @@
 
 AI-driven on-call escalation for property management. Watches email and Dialpad,
 scores urgency with an LLM, and pages on-call staff via Twilio voice + SMS until
-someone acknowledges.
+someone acknowledges. Includes in-browser WebRTC voice (OpenAI Realtime) and a
+full agent-tracking / evaluation layer for trace observability.
 
 ## Architecture
 
@@ -20,12 +21,12 @@ AI Service (FastAPI, :8083)┘
 
 ## Stack
 
-| Layer    | Tech                                                   |
-|----------|--------------------------------------------------------|
-| Frontend | React 18, Vite, TypeScript, TailwindCSS, Socket.io     |
-| Backend  | NestJS 10, Prisma, PostgreSQL, Bull (Redis), Socket.io |
-| AI       | FastAPI, Pydantic, OpenAI Agents SDK                   |
-| External | Twilio (voice/SMS), Dialpad (inbound), Microsoft 365   |
+| Layer    | Tech                                                                 |
+|----------|----------------------------------------------------------------------|
+| Frontend | React 18, Vite, TypeScript, TailwindCSS, Socket.io, WebRTC           |
+| Backend  | NestJS 10, Prisma, PostgreSQL, Bull (Redis), Socket.io               |
+| AI       | FastAPI, Pydantic, OpenAI Agents SDK, LangGraph, OpenAI Realtime API |
+| External | Twilio (voice/SMS), Dialpad (inbound), Microsoft 365, LangSmith      |
 
 ## Quick Start
 
@@ -38,6 +39,9 @@ cd ../frontend && npm i
 # run all three under PM2
 pm2 start ecosystem.config.js
 ```
+
+Or build/run with Docker (backend + frontend ship `Dockerfile`s — Node 20 +
+Prisma migrate for the API, multi-stage Vite build → nginx 1.27 for the SPA).
 
 Access:
 - UI: http://localhost:5175
@@ -59,6 +63,9 @@ SMTP_USER=...   SMTP_PASSWORD=...
 DIALPAD_WEBHOOK_SECRET=...
 EMERGENCY_SCORE_THRESHOLD=0.6
 ACKNOWLEDGMENT_TIMEOUT_SECONDS=120
+LANGSMITH_TRACING=true
+LANGSMITH_PROJECT=after-hours-agent
+LANGSMITH_API_KEY=...
 ```
 
 Full list: `.env.example`.
@@ -74,7 +81,34 @@ Full list: `.env.example`.
 6. Live dashboard streams logs and status via WebSocket.
 
 Dialpad inbound calls follow the same path, starting from the voicemail
-analyzer agent.
+analyzer agent. Browser-initiated WebRTC calls use the same graph but tunnel
+audio through the OpenAI Realtime API via the FastAPI signaling server.
+
+## Agent Tracking & Evaluation
+
+Every LLM call (triage, SMS, voice script, WebRTC realtime session) emits a
+**trace** with hierarchical **spans** to the backend `/agent-tracking` module,
+which scores them against five online evaluators and queues interesting cases
+for offline review.
+
+| Table                    | Purpose                                                       |
+|--------------------------|---------------------------------------------------------------|
+| `agent_traces`           | One row per agent run (event_id, run_type, emergency_score)   |
+| `agent_spans`            | LLM / tool / network spans nested under a trace               |
+| `agent_evaluations`      | Online evaluator scores (pass/fail + reason)                  |
+| `agent_dataset_examples` | Queued examples for fine-tuning / regression sets             |
+
+**Evaluators:** `triage_correctness`, `trajectory_valid`, `sla_passed`,
+`schema_valid`, `dialog_progress`.
+
+**Frontend** — `/agent-tracking` dashboard (3 tabs):
+- **Observability**: trace volume, run-type breakdown, recent traces table.
+- **Evaluation**: evaluator coverage matrix, dataset queue, online/offline scores.
+- **Setup**: implementation checklist + LangSmith links.
+
+The AI service publishes via `ai-service/services/agent_tracking.py` →
+`POST /agent-tracking/traces` (best-effort, retried). LangSmith mirroring is
+enabled when `LANGSMITH_TRACING=true`.
 
 ## LangGraph Flow
 
@@ -149,10 +183,16 @@ flowchart LR
 
 ```
 backend/      NestJS API + Prisma schema (backend/prisma/schema.prisma)
+  └── src/agent-tracking/   traces, spans, evaluators, dataset queue
 ai-service/   FastAPI agents, email/Twilio/Dialpad services
-frontend/     React dashboard (Live, Events, Metrics, Rotation, Settings)
+  ├── graph/        LangGraph StateGraph + nodes
+  ├── webrtc/       Socket.io signaling, OpenAI Realtime bridge
+  └── services/agent_tracking.py   trace publisher
+frontend/     React dashboard (Live, Events, Metrics, Rotation, Settings,
+              Agent Tracking)
 docs/         HLD/LLD architecture
 ecosystem.config.js   PM2 process definitions
+backend/Dockerfile, frontend/Dockerfile   container builds
 ```
 
 ## API Surface (selected)
@@ -168,6 +208,10 @@ ecosystem.config.js   PM2 process definitions
 | POST   | `/classify/orchestrated` (AI)     | internal-key |
 | POST   | `/escalate/orchestrated` (AI)     | internal-key |
 | POST   | `/dialpad`, `/twilio/*` (AI)      | signed       |
+| GET    | `/agent-tracking/dashboard`       | JWT          |
+| POST   | `/agent-tracking/traces`          | internal-key |
+| POST   | `/agent-tracking/backfill`        | JWT          |
+| WS     | `/socket.io` (signaling) (AI)     | JWT          |
 
 See [LLD.md §3](docs/architecture/LLD.md) for the full list.
 

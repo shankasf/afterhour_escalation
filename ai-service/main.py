@@ -41,11 +41,11 @@ async def lifespan(app: FastAPI):
     global _poller_task
     logger.info("Starting AI Service...")
 
-    # Initialize the LangGraph singleton (creates checkpoint tables on first boot).
+    # Initialize the LangGraph checkpointer + compiled graph.
+    from graph.graph import close_graph, init_graph
     try:
-        from graph.graph import get_graph
-        get_graph()
-        logger.info("LangGraph singleton initialized")
+        await init_graph()
+        logger.info("LangGraph initialized")
     except Exception as e:
         logger.warning(f"LangGraph init deferred: {e}")
 
@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI):
     _poller_task = asyncio.create_task(start_email_poller(poll_interval))
 
     yield
-    
+
     # Cancel poller on shutdown
     if _poller_task:
         _poller_task.cancel()
@@ -63,6 +63,10 @@ async def lifespan(app: FastAPI):
             await _poller_task
         except asyncio.CancelledError:
             pass
+    try:
+        await close_graph()
+    except Exception as e:
+        logger.warning(f"LangGraph teardown error: {e}")
     logger.info("Shutting down AI Service...")
 
 

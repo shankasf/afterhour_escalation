@@ -23,6 +23,7 @@ import { PresenceModule } from './presence/presence.module';
 import { SignalingModule } from './signaling/signaling.module';
 import { CustomerChatModule } from './customer-chat/customer-chat.module';
 import { PushModule } from './push/push.module';
+import { AgentTrackingModule } from './agent-tracking/agent-tracking.module';
 import { CorrelationIdMiddleware } from './common/logging/correlation-id.middleware';
 import { HttpLoggingMiddleware } from './common/logging/http-logging.middleware';
 
@@ -59,6 +60,7 @@ import { HttpLoggingMiddleware } from './common/logging/http-logging.middleware'
     SignalingModule,
     CustomerChatModule,
     PushModule,
+    AgentTrackingModule,
   ],
 })
 export class AppModule implements NestModule {

@@ -20,10 +20,11 @@ export interface Event {
   emergencyScore: number;
   classificationReason?: string;
   isEmergency: boolean;
-  status: 'NEW' | 'ESCALATING' | 'ACKNOWLEDGED' | 'RESOLVED' | 'EXPIRED' | 'DOWNGRADED';
+  status: 'NEW' | 'ESCALATING' | 'ACKNOWLEDGED' | 'RESOLVED' | 'EXPIRED' | 'DOWNGRADED' | 'MISSED' | 'CLOSED';
   acknowledgedById?: string;
   acknowledgedBy?: User;
   acknowledgedAt?: string;
+  receivedAt?: string;
   createdAt: string;
   updatedAt: string;
   escalationLogs: EscalationLog[];
@@ -126,12 +127,20 @@ export interface DailyMetric {
   createdAt: string;
 }
 
+export type ServiceStatus = 'healthy' | 'degraded' | 'unhealthy';
+
+export interface ServiceHealth {
+  status: ServiceStatus;
+  latency?: number;
+  lastPoll?: string;
+}
+
 export interface HealthStatus {
-  status: 'healthy' | 'unhealthy';
+  status: ServiceStatus;
   services: {
-    database: boolean;
-    aiService: boolean;
-    emailPoller: boolean;
+    database: ServiceHealth;
+    aiService: ServiceHealth;
+    emailPoller: ServiceHealth;
   };
   uptime: number;
   timestamp: string;

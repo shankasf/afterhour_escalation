@@ -112,7 +112,7 @@ export default function Login() {
                             <p className="text-sm font-medium text-blue-800 mb-2">Demo Credentials</p>
                             <div className="space-y-1 text-sm text-blue-700">
                                 <p><span className="font-medium">Email:</span> <code className="bg-blue-100 px-2 py-0.5 rounded">admin@afterhours.com</code></p>
-                                <p><span className="font-medium">Password:</span> <code className="bg-blue-100 px-2 py-0.5 rounded">admin123</code></p>
+                                <p><span className="font-medium">Password:</span> <code className="bg-blue-100 px-2 py-0.5 rounded">Admin@123</code></p>
                             </div>
                         </div>
                     </div>

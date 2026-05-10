@@ -13,6 +13,7 @@ import Rotation from './pages/Rotation'
 import Alerts from './pages/Alerts'
 import Settings from './pages/Settings'
 import Metrics from './pages/Metrics'
+import AgentTrackingDashboard from './pages/AgentTrackingDashboard'
 import Live from './pages/Live'
 import TechHome from './pages/TechHome'
 import Incidents from './pages/Incidents'
@@ -84,6 +85,15 @@ function AdminApp() {
                                 <Route path="/rotation" element={<Rotation />} />
                                 <Route path="/alerts" element={<Alerts />} />
                                 <Route path="/metrics" element={<Metrics />} />
+                                <Route path="/agent-tracking" element={<AgentTrackingDashboard />} />
+                                <Route
+                                    path="/agent-observability"
+                                    element={<AgentTrackingDashboard defaultTab="observability" lockedTab="observability" />}
+                                />
+                                <Route
+                                    path="/agent-evaluation"
+                                    element={<AgentTrackingDashboard defaultTab="evaluation" lockedTab="evaluation" />}
+                                />
                                 <Route path="/live" element={<Live />} />
                                 <Route path="/settings" element={<Settings />} />
                             </Routes>

@@ -198,11 +198,14 @@ model Event {
   updatedAt                DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   // Relations
-  acknowledgedBy  User?            @relation("AcknowledgedBy", fields: [acknowledgedById], references: [id])
-  escalationLogs  EscalationLog[]
-  acknowledgments Acknowledgment[]
-  adminAlerts     AdminAlert[]
-  chatSession     ChatSession?
+  acknowledgedBy       User?                 @relation("AcknowledgedBy", fields: [acknowledgedById], references: [id])
+  escalationLogs       EscalationLog[]
+  acknowledgments      Acknowledgment[]
+  adminAlerts          AdminAlert[]
+  chatSession          ChatSession?
+  agentTraces          AgentTrace[]
+  agentEvaluations     AgentEvaluation[]
+  agentDatasetExamples AgentDatasetExample[]
 
   @@index([status])
   @@index([receivedAt])
@@ -337,6 +340,106 @@ model SystemHealthLog {
 
   @@index([service, checkedAt])
   @@map("system_health_logs")
+}
+
+model AgentTrace {
+  id             String    @id @default(uuid())
+  traceId        String    @unique @map("trace_id") @db.VarChar(160)
+  externalRunId  String?   @map("external_run_id") @db.VarChar(160)
+  eventId        String?   @map("event_id")
+  threadId       String?   @map("thread_id") @db.VarChar(160)
+  project        String    @default("after-hours-agent") @db.VarChar(120)
+  title          String?   @db.VarChar(500)
+  source         String?   @db.VarChar(80)
+  status         String    @default("success") @db.VarChar(80)
+  runCount       Int       @default(0) @map("run_count")
+  latencyMs      Int?      @map("latency_ms")
+  errorMessage   String?   @map("error_message")
+  emergencyScore Decimal?  @map("emergency_score") @db.Decimal(5, 4)
+  metadata       Json?
+  tags           String[]  @default([])
+  startedAt      DateTime  @map("started_at") @db.Timestamptz(6)
+  endedAt        DateTime? @map("ended_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  event           Event?                @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  spans           AgentSpan[]
+  evaluations     AgentEvaluation[]
+  datasetExamples AgentDatasetExample[]
+
+  @@index([eventId])
+  @@index([threadId])
+  @@index([startedAt])
+  @@index([status])
+  @@map("agent_traces")
+}
+
+model AgentSpan {
+  id           String    @id @default(uuid())
+  agentTraceId String    @map("agent_trace_id")
+  spanId       String    @unique @map("span_id") @db.VarChar(160)
+  parentSpanId String?   @map("parent_span_id") @db.VarChar(160)
+  name         String    @db.VarChar(160)
+  runType      String    @default("chain") @map("run_type") @db.VarChar(60)
+  status       String    @default("success") @db.VarChar(80)
+  latencyMs    Int?      @map("latency_ms")
+  inputs       Json?
+  outputs      Json?
+  metadata     Json?
+  startedAt    DateTime  @map("started_at") @db.Timestamptz(6)
+  endedAt      DateTime? @map("ended_at") @db.Timestamptz(6)
+
+  trace AgentTrace @relation(fields: [agentTraceId], references: [id], onDelete: Cascade)
+
+  @@index([agentTraceId])
+  @@index([runType])
+  @@index([status])
+  @@map("agent_spans")
+}
+
+model AgentEvaluation {
+  id           String   @id @default(uuid())
+  agentTraceId String   @map("agent_trace_id")
+  eventId      String?  @map("event_id")
+  evaluatorKey String   @map("evaluator_key") @db.VarChar(120)
+  evaluatorName String  @map("evaluator_name") @db.VarChar(200)
+  evaluatorType String  @default("code") @map("evaluator_type") @db.VarChar(60)
+  score        Decimal  @db.Decimal(5, 2)
+  passed       Boolean
+  feedback     String?
+  metadata     Json?
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  trace AgentTrace @relation(fields: [agentTraceId], references: [id], onDelete: Cascade)
+  event Event?     @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  @@unique([agentTraceId, evaluatorKey])
+  @@index([eventId])
+  @@index([evaluatorKey])
+  @@index([createdAt])
+  @@map("agent_evaluations")
+}
+
+model AgentDatasetExample {
+  id              String   @id @default(uuid())
+  agentTraceId    String   @map("agent_trace_id")
+  eventId         String?  @map("event_id")
+  reason          String   @db.VarChar(120)
+  status          String   @default("queued") @db.VarChar(60)
+  inputs          Json
+  expectedOutputs Json?    @map("expected_outputs")
+  notes           String?
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  trace AgentTrace @relation(fields: [agentTraceId], references: [id], onDelete: Cascade)
+  event Event?     @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  @@unique([agentTraceId, reason])
+  @@index([eventId])
+  @@index([reason])
+  @@index([status])
+  @@map("agent_dataset_examples")
 }
 
 model EmailPollingStatus {

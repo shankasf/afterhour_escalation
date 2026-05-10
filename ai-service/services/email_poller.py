@@ -12,6 +12,7 @@ from config import get_settings
 from services.email_service import get_email_service
 from services.email_uid_tracker import get_email_uid_tracker
 from services.http_client import get_http_client
+from services.agent_tracking import isoformat, publish_agent_trace, utc_now
 from ah_agents.email_triage_agent import EmailTriageAgent
 
 logger = logging.getLogger(__name__)
@@ -165,6 +166,41 @@ async def create_emergency_event(email_data: dict, triage_result: dict):
             event_id = event.get("id")
             logger.info(f"[ESCALATION PIPELINE] Event created successfully!")
             logger.info(f"  Event ID: {event_id}")
+            await publish_agent_trace(
+                {
+                    "traceId": f"email_triage_{event_id}",
+                    "eventId": event_id,
+                    "threadId": event_id,
+                    "project": "after-hours-agent",
+                    "title": event_payload["subject"] or "Email triage",
+                    "source": "email",
+                    "status": "success",
+                    "emergencyScore": event_payload["emergencyScore"],
+                    "metadata": {
+                        "event_id": event_id,
+                        "thread_id": event_id,
+                        "session_id": event_id,
+                        "environment": "production",
+                        "agent": "EmailTriageAgent",
+                    },
+                    "tags": ["production", "after-hours-agent", "email", "triage"],
+                    "startedAt": isoformat(utc_now()),
+                    "endedAt": isoformat(utc_now()),
+                    "spans": [
+                        {
+                            "spanId": f"email_triage_{event_id}_triage",
+                            "name": "email_triage",
+                            "runType": "llm",
+                            "status": "success",
+                            "outputs": {
+                                "emergency_score": event_payload["emergencyScore"],
+                                "summary": event_payload["aiSummary"],
+                                "extracted_context": event_payload["extractedContext"],
+                            },
+                        }
+                    ],
+                }
+            )
             logger.info("-"*50)
             logger.info(f"[ESCALATION PIPELINE] Starting escalation for event {event_id}...")
 

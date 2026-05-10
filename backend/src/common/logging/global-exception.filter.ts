@@ -38,7 +38,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const stack =
       exception instanceof Error ? exception.stack : undefined;
 
-    this.logger.error({
+    const logPayload = {
       message: `Unhandled exception: ${errMessage}`,
       method: req?.method,
       url: req?.originalUrl || req?.url,
@@ -46,7 +46,13 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       correlationId: getCorrelationId(),
       error: errMessage,
       stack,
-    });
+    };
+
+    if (status >= 500) {
+      this.logger.error(logPayload);
+    } else {
+      this.logger.warn(logPayload);
+    }
 
     // Build the response body: preserve HttpException payloads as-is so
     // existing clients keep working; synthesize a generic 500 envelope

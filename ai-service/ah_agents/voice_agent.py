@@ -6,6 +6,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 from agents import Agent, Runner
+from services.agent_tracking import isoformat, publish_agent_trace, utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ async def generate_voice_script(
     source_type: str = "email",
 ) -> dict:
     """Generate a voice script for an outbound escalation call."""
+    started_at = utc_now()
     logger.info("=" * 60)
     logger.info("[VOICE AGENT] Generating voice script")
     logger.info(f"  Event ID: {event_id}")
@@ -77,6 +79,42 @@ async def generate_voice_script(
         logger.info(f"  Urgency Level: {output.urgency_level}")
         logger.info("=" * 60)
 
+        await publish_agent_trace(
+            {
+                "traceId": f"voice_script_{event_id}",
+                "eventId": event_id,
+                "threadId": event_id,
+                "project": "after-hours-agent",
+                "title": "Voice escalation script",
+                "source": source_type,
+                "status": "success",
+                "latencyMs": int((utc_now() - started_at).total_seconds() * 1000),
+                "metadata": {
+                    "event_id": event_id,
+                    "thread_id": event_id,
+                    "session_id": event_id,
+                    "agent": "VoiceScriptAgent",
+                    "escalation_level": escalation_level,
+                },
+                "tags": ["production", "after-hours-agent", "voice", "llm"],
+                "startedAt": isoformat(started_at),
+                "endedAt": isoformat(utc_now()),
+                "spans": [
+                    {
+                        "spanId": f"voice_script_{event_id}_llm",
+                        "name": "voice_script_generation",
+                        "runType": "llm",
+                        "status": "success",
+                        "inputs": {"issue_description": issue_description, "source_type": source_type},
+                        "outputs": {
+                            "urgency_level": output.urgency_level,
+                            "estimated_duration": output.estimated_duration_seconds,
+                        },
+                    }
+                ],
+            }
+        )
+
         return {
             "script": script,
             "audio_url": None,
@@ -86,6 +124,39 @@ async def generate_voice_script(
         }
     except Exception as e:
         logger.error(f"[VOICE AGENT] Script generation failed: {e}")
+        await publish_agent_trace(
+            {
+                "traceId": f"voice_script_{event_id}",
+                "eventId": event_id,
+                "threadId": event_id,
+                "project": "after-hours-agent",
+                "title": "Voice escalation script",
+                "source": source_type,
+                "status": "error",
+                "latencyMs": int((utc_now() - started_at).total_seconds() * 1000),
+                "errorMessage": str(e),
+                "metadata": {
+                    "event_id": event_id,
+                    "thread_id": event_id,
+                    "session_id": event_id,
+                    "agent": "VoiceScriptAgent",
+                    "fallback": "template",
+                },
+                "tags": ["production", "after-hours-agent", "voice", "fallback"],
+                "startedAt": isoformat(started_at),
+                "endedAt": isoformat(utc_now()),
+                "spans": [
+                    {
+                        "spanId": f"voice_script_{event_id}_fallback",
+                        "name": "voice_script_fallback",
+                        "runType": "llm",
+                        "status": "error",
+                        "inputs": {"issue_description": issue_description, "source_type": source_type},
+                        "outputs": {"error": str(e)},
+                    }
+                ],
+            }
+        )
         return {
             "script": _template_script(issue_description, time_str, responder_name, escalation_level),
             "audio_url": None,

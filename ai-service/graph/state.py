@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 from typing import Any, List, Literal, Optional, TypedDict
 
 from pydantic import BaseModel, Field
@@ -32,7 +36,7 @@ class SkipEntry(BaseModel):
     contact_name: str
     level: int
     reason: str
-    skipped_at: datetime = Field(default_factory=datetime.utcnow)
+    skipped_at: datetime = Field(default_factory=_utc_now)
 
 
 class Attempt(BaseModel):
@@ -40,7 +44,7 @@ class Attempt(BaseModel):
     contact_name: str
     contact_user_id: Optional[str] = None
     channel: Literal["voice_webrtc", "sms", "voicemail", "manual"]
-    started_at: datetime = Field(default_factory=datetime.utcnow)
+    started_at: datetime = Field(default_factory=_utc_now)
     ended_at: Optional[datetime] = None
     outcome: Literal["acked", "declined", "no_answer", "callback_requested", "in_progress", "failed"] = "in_progress"
     transcript_ref: Optional[str] = None
@@ -52,7 +56,7 @@ class Turn(BaseModel):
     text: str
     modality: Literal["text", "voice"] = "text"
     actor: Optional[str] = None
-    at: datetime = Field(default_factory=datetime.utcnow)
+    at: datetime = Field(default_factory=_utc_now)
 
 
 class IncidentState(TypedDict, total=False):

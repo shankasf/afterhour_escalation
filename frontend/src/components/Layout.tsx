@@ -12,19 +12,38 @@ import {
     WifiOff,
     BarChart3,
     Radio,
+    Workflow,
+    TestTube2,
 } from 'lucide-react';
 
 interface LayoutProps {
     children: React.ReactNode;
 }
 
-const navItems = [
-    { to: '/live', icon: Radio, label: 'Live Operations' },
-    { to: '/metrics', icon: BarChart3, label: 'Analytics' },
-    { to: '/events', icon: Mail, label: 'Events' },
-    { to: '/rotation', icon: Calendar, label: 'On-Call' },
-    { to: '/alerts', icon: Bell, label: 'Alerts' },
-    { to: '/settings', icon: Settings, label: 'Settings' },
+const navSections = [
+    {
+        label: 'Operations',
+        items: [
+            { to: '/live', icon: Radio, label: 'Live Operations' },
+            { to: '/metrics', icon: BarChart3, label: 'Analytics' },
+            { to: '/events', icon: Mail, label: 'Events' },
+            { to: '/rotation', icon: Calendar, label: 'On-Call' },
+            { to: '/alerts', icon: Bell, label: 'Alerts' },
+        ],
+    },
+    {
+        label: 'Agent Tracking',
+        items: [
+            { to: '/agent-observability', icon: Workflow, label: 'Observability' },
+            { to: '/agent-evaluation', icon: TestTube2, label: 'Evaluation' },
+        ],
+    },
+    {
+        label: 'Admin',
+        items: [
+            { to: '/settings', icon: Settings, label: 'Settings' },
+        ],
+    },
 ];
 
 export default function Layout({ children }: LayoutProps) {
@@ -53,21 +72,28 @@ export default function Layout({ children }: LayoutProps) {
                     </div>
                 </div>
 
-                <nav className="flex-1 px-4">
-                    {navItems.map((item) => (
-                        <NavLink
-                            key={item.to}
-                            to={item.to}
-                            className={({ isActive }) =>
-                                `flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors ${isActive
-                                    ? 'bg-primary-600 text-white'
-                                    : 'text-gray-300 hover:bg-gray-800'
-                                }`
-                            }
-                        >
-                            <item.icon className="w-5 h-5" />
-                            <span>{item.label}</span>
-                        </NavLink>
+                <nav className="flex-1 px-4 space-y-5">
+                    {navSections.map((section) => (
+                        <div key={section.label}>
+                            <p className="px-4 mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                                {section.label}
+                            </p>
+                            {section.items.map((item) => (
+                                <NavLink
+                                    key={item.to}
+                                    to={item.to}
+                                    className={({ isActive }) =>
+                                        `flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors ${isActive
+                                            ? 'bg-primary-600 text-white'
+                                            : 'text-gray-300 hover:bg-gray-800'
+                                        }`
+                                    }
+                                >
+                                    <item.icon className="w-5 h-5" />
+                                    <span>{item.label}</span>
+                                </NavLink>
+                            ))}
+                        </div>
                     ))}
                 </nav>
 

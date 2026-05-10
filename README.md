@@ -76,6 +76,75 @@ Full list: `.env.example`.
 Dialpad inbound calls follow the same path, starting from the voicemail
 analyzer agent.
 
+## LangGraph Flow
+
+The AI service is a single `StateGraph` (`ai-service/graph/graph.py`) over an
+`IncidentState`, checkpointed in Postgres. Solid arrows are unconditional
+edges; dashed arrows are conditional routes keyed off `state.status` /
+`state.source` / `triage.decision`.
+
+```mermaid
+flowchart TD
+    START([START]) --> intake
+    intake -. source==chat .-> customer_chat_dialog
+    intake -. else .-> triage
+    customer_chat_dialog -. triage.decision==escalate .-> triage
+    customer_chat_dialog -. else .-> END1([END])
+    triage --> after_hours_gate
+    after_hours_gate -. in window .-> rotation_planner
+    after_hours_gate -. after_hours_blocked .-> customer_status_update
+    after_hours_gate -. closed .-> END2([END])
+    rotation_planner --> outreach
+    outreach -. exhausted .-> exhaustion
+    outreach -. else .-> wait_for_ack
+    wait_for_ack -->|interrupt_before| response_interpreter
+    response_interpreter -. acknowledged .-> resolution
+    response_interpreter -. awaiting_callback .-> callback_handler
+    response_interpreter -. exhausted .-> exhaustion
+    response_interpreter -. outreach .-> outreach
+    response_interpreter -. else .-> wait_for_ack
+    callback_handler --> customer_callback
+    customer_callback --> wait_for_ack
+    resolution --> customer_status_update
+    exhaustion --> customer_status_update
+    customer_status_update --> END3([END])
+
+    classDef terminal fill:#eee,stroke:#888,stroke-dasharray:3 3;
+    class START,END1,END2,END3 terminal;
+```
+
+### Node responsibilities
+
+| Node                     | What it does                                                                 |
+|--------------------------|------------------------------------------------------------------------------|
+| `intake`                 | Normalizes the inbound event (email / Dialpad / chat) into `IncidentState`.  |
+| `triage`                 | LLM scores urgency 0–1, sets `triage.decision = escalate / ignore`.          |
+| `customer_chat_dialog`   | Two-way chat turn with the customer; may escalate or end the run.            |
+| `after_hours_gate`       | Checks coverage window; routes to ladder, customer update, or close.         |
+| `rotation_planner`       | Builds the escalation ladder from on-call rotation + fixed contacts.         |
+| `outreach`               | Places Twilio call + SMS for the current ladder level.                       |
+| `wait_for_ack`           | `interrupt_before` pause — graph suspends until an ack/callback webhook.     |
+| `response_interpreter`   | Reads webhook result; decides ack, callback, retry, advance, or exhaust.     |
+| `callback_handler`       | Records an on-call callback promise and schedules the customer callback.     |
+| `customer_callback`      | Calls the customer back, then re-enters `wait_for_ack`.                      |
+| `resolution`             | Marks incident acknowledged and prepares the closing customer message.       |
+| `exhaustion`             | All levels failed — creates `AdminAlert` and prepares failure message.       |
+| `customer_status_update` | Sends the final SMS/email to the customer and terminates the run.            |
+
+### Lifecycle
+
+```mermaid
+flowchart LR
+    A[FastAPI startup<br/>main.py lifespan] --> B[init_graph]
+    B --> C{DATABASE_URL?}
+    C -- yes --> D[AsyncPostgresSaver<br/>+ setup]
+    C -- no --> E[MemorySaver]
+    D --> F[build_graph<br/>StateGraph.compile]
+    E --> F
+    F --> G[get_graph used by<br/>/classify/orchestrated<br/>/escalate/orchestrated<br/>/twilio/* /dialpad webhooks]
+    G --> H[FastAPI shutdown] --> I[close_graph]
+```
+
 ## Project Layout
 
 ```

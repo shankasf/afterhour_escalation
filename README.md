@@ -123,54 +123,61 @@ WebRTC `call_accepted`/`hangup`) resumes the same graph from where it parked.
   conversational `customer_chat_dialog` loop before joining the escalation path
 - **Manual / API** — `POST /escalate/orchestrated` from backend Bull jobs
 
+Green = talks to **customer**. Red = pages **technician**. Blue = LLM call.
+Amber = graph pauses here.
+
 ```mermaid
 flowchart TD
-    START([START]) --> intake
+    START([start]) --> intake
 
-    intake -. "source=chat" .-> chat[customer_chat_dialog]
-    intake -. "source=email/manual" .-> triage
+    intake -. "chat" .-> chat["chat with customer"]
+    intake -. "email" .-> triage
 
-    chat -- "more turns needed" --> chat
-    chat -. "done && triage.decision=escalate" .-> triage
-    chat -. "done && decision in ignore/monitor" .-> END_chat([END])
+    chat -- "ask next" --> chat
+    chat -. "escalate" .-> triage
+    chat -. "no need" .-> END_chat([end])
 
-    triage --> gate[after_hours_gate]
+    triage["triage<br/>score 0–1"] --> gate{after hours?}
 
-    gate -. "outside 00:00–07:00 ET<br/>→ after_hours_blocked" .-> status_after_hours[customer_status_update]
-    gate -. "in window, decision≠escalate<br/>→ closed" .-> END_closed([END])
-    gate -. "in window, decision=escalate<br/>→ outreach" .-> planner[rotation_planner]
+    gate -. "no, score low" .-> END_closed([end])
+    gate -. "no, score high" .-> planner["build tech list"]
+    gate -. "yes" .-> tell_blocked["tell customer:<br/>we'll handle AM"]
 
-    planner -- "builds ladder<br/>cursor=0" --> outreach
+    planner --> outreach
 
-    outreach -. "cursor ≥ ladder.length<br/>→ exhausted" .-> exhaustion
-    outreach -- "voice script + Twilio call<br/>awaiting=ack, +120s deadline" --> park
+    outreach["call/SMS tech<br/>at level N"]
+    outreach -. "list done" .-> exhausted["no one acked"]
+    outreach -- "page sent" --> park
 
-    park["wait_for_ack<br/>(interrupt_before — graph suspends)"] -->|webhook resumes| interpret[response_interpreter]
+    park["wait for tech reply"] -->|webhook| interpret["read tech reply"]
 
-    interpret -. "intent=ack" .-> resolution
-    interpret -. "intent=callback" .-> callback_handler
-    interpret -. "intent=decline/no_answer/unknown<br/>cursor += 1" .-> outreach
+    interpret -. "ack" .-> done["tech took it"]
+    interpret -. "call me back" .-> wait_cb["wait for tech<br/>to ring back"]
+    interpret -. "no / silent" .-> next_tech[/"next level"/]
+    next_tech --> outreach
 
-    callback_handler -- "awaiting=callback<br/>+10 min" --> customer_callback
-    customer_callback -- "awaiting=callback<br/>+15 min" --> park
+    wait_cb --> park
 
-    resolution -- "stop_escalation('acknowledged')" --> status_done[customer_status_update]
-    exhaustion -- "stop_escalation('ladder_exhausted')" --> status_done
+    done -- "stop escalation" --> tell_done["tell customer:<br/>tech is on it"]
+    exhausted -- "alert admin" --> tell_done
 
-    status_after_hours --> END_a([END])
-    status_done --> END_done([END])
+    tell_blocked --> END_a([end])
+    tell_done --> END_done([end])
 
     classDef terminal fill:#eee,stroke:#888,stroke-dasharray:3 3;
     classDef park fill:#fff4d6,stroke:#c79100;
     classDef llm fill:#e8f1ff,stroke:#1d4ed8;
+    classDef tech fill:#fde2e2,stroke:#b91c1c;
+    classDef cust fill:#dcfce7,stroke:#15803d;
     class START,END_chat,END_closed,END_a,END_done terminal;
     class park park;
-    class triage,chat,outreach,interpret llm;
+    class triage,interpret,chat llm;
+    class planner,outreach,park,interpret,wait_cb,done,exhausted,next_tech tech;
+    class chat,tell_blocked,tell_done cust;
 ```
 
-Blue nodes call OpenAI; the amber node is the suspend point (the compile is
-`interrupt_before=["wait_for_ack"]`, so the graph blocks here until the next
-webhook arrives and `post_event` resumes the thread).
+The graph pauses at **wait for tech reply** (`interrupt_before` in code) until
+a webhook (Twilio DTMF, SMS reply, or WebRTC accept) wakes it up.
 
 ### Node responsibilities
 

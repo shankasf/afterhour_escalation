@@ -23,7 +23,7 @@ export interface EscalationLadderContact {
   name: string;
   phoneNumber: string;
   position: number;
-  contactType: 'primary' | 'secondary' | 'fixed';
+  contactType: 'on_duty' | 'primary' | 'secondary' | 'fixed';
 }
 
 export interface TriageResult {

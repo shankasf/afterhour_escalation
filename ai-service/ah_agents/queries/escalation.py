@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from config import get_settings
 from logging_setup import with_correlation_header
-from . import function_tool
+from . import tool
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -73,7 +73,7 @@ class StopEscalationOutput(BackendResult):
     reason: Optional[str] = None
 
 
-@function_tool
+@tool
 async def get_current_rotation() -> RotationOutput:
     """Get the current on-call rotation contacts from the backend."""
     try:
@@ -101,7 +101,7 @@ async def get_current_rotation() -> RotationOutput:
         return RotationOutput(success=False, error=str(e))
 
 
-@function_tool
+@tool
 async def get_escalation_contact(role: str, level: int) -> ContactLookupOutput:
     """Look up a single escalation contact by role and/or level."""
     ladder = await get_escalation_ladder()
@@ -111,7 +111,7 @@ async def get_escalation_contact(role: str, level: int) -> ContactLookupOutput:
     return ContactLookupOutput(success=False, error="Contact not found")
 
 
-@function_tool
+@tool
 async def get_escalation_ladder() -> EscalationLadderOutput:
     """Fetch the escalation ladder from the backend."""
     try:
@@ -142,7 +142,7 @@ async def get_escalation_ladder() -> EscalationLadderOutput:
         return EscalationLadderOutput()
 
 
-@function_tool
+@tool
 async def start_escalation(event_id: str) -> StartEscalationOutput:
     """Start escalation in the backend for a specific event."""
     try:
@@ -168,7 +168,7 @@ async def start_escalation(event_id: str) -> StartEscalationOutput:
         return StartEscalationOutput(success=False, error=str(e))
 
 
-@function_tool
+@tool
 async def log_escalation_attempt(
     event_id: str,
     contact_name: str,
@@ -206,7 +206,7 @@ async def log_escalation_attempt(
         return LogEscalationAttemptOutput(success=False, error=str(e), timestamp=datetime.now().isoformat())
 
 
-@function_tool
+@tool
 async def check_event_status(event_id: str) -> EventStatusOutput:
     """Fetch current event status from the backend."""
     try:
@@ -266,7 +266,7 @@ async def check_event_status(event_id: str) -> EventStatusOutput:
         return EventStatusOutput(success=False, event_id=event_id, error=str(e))
 
 
-@function_tool
+@tool
 async def stop_escalation(event_id: str, reason: str) -> StopEscalationOutput:
     """Stop an active escalation in the backend."""
     try:

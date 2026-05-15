@@ -102,13 +102,18 @@ export class CustomerChatGateway
       durationMs: payload.durationMs,
     });
 
-    await this.notifyAiService(sessionToken, payload.text);
+    const eventId = await this.chatSessions.ensureEventForSession(
+      sessionToken,
+      payload.text,
+    );
+    await this.notifyAiService(sessionToken, payload.text, eventId);
     return { ok: true };
   }
 
   private async notifyAiService(
     sessionToken: string,
     text: string,
+    eventId: string | null,
   ): Promise<void> {
     const aiBase = this.configService.get<string>('AI_SERVICE_URL');
     const internalKey = this.configService.get<string>('INTERNAL_API_KEY');
@@ -124,7 +129,7 @@ export class CustomerChatGateway
         this.httpService.post(
           `${aiBase}/graph/event`,
           {
-            event_id: `chat-${sessionToken}`,
+            event_id: eventId ?? `chat-${sessionToken}`,
             channel_event: {
               kind: 'customer_chat_message',
               session_token: sessionToken,

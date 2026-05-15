@@ -1,55 +1,43 @@
-"""Backend query/tools used by Agents.
+"""Backend query tools for LangGraph nodes.
 
-This package mirrors the pattern used in `app_agents/*`:
-- "queries" are tool functions (often network/DB calls)
-- "agents" are declarative `Agent(...)` definitions that use those tools
+Each query function is decorated with `@tool` (a thin wrapper around
+`langchain_core.tools.tool`) so it can be used in two ways:
 
-All tool functions are compatible with the OpenAI Agents SDK `function_tool` decorator.
-If the SDK isn't installed, the decorator becomes a no-op so imports don't crash.
+1. As a plain async function:
+       await lookup_user_by_phone(phone_number)
 
-IMPORTANT: The decorated functions remain directly callable as async functions,
-while also being usable as agent tools.
+2. As a LangChain `BaseTool` for `create_react_agent` / LangGraph tool nodes:
+       lookup_user_by_phone.as_tool
+
+The wrapper preserves direct-callability (existing callers like
+`AckMonitorAgent`, `EscalationAgent`, and `graph/tools.py` await the function
+directly) while still exposing the BaseTool interface via the `.as_tool`
+attribute.
 """
 
 from __future__ import annotations
 
-from functools import wraps
 from typing import Callable, TypeVar
+
+from langchain_core.tools import tool as _lc_tool
 
 TFunc = TypeVar("TFunc", bound=Callable)
 
 
-try:
-    from agents import function_tool as _function_tool
-except Exception:  # pragma: no cover
-    _function_tool = None
+def tool(func: TFunc) -> TFunc:
+    """Decorator that makes ``func`` usable as both a plain async function
+    and a LangChain ``BaseTool``.
 
-
-def function_tool(func: TFunc) -> TFunc:
-    """Safe wrapper around Agents SDK `function_tool`.
-
-    Keeps the service importable even when the Agents SDK isn't present.
-    Also ensures the decorated function remains directly callable as an async function.
+    The returned object is the original coroutine function (so
+    ``await func(arg)`` keeps working). The associated ``BaseTool`` is
+    attached as ``.as_tool`` for use with LangGraph's
+    ``create_react_agent`` or any tool-node that expects a ``BaseTool``.
     """
 
-    if _function_tool is None:
-        return func
+    lc_tool = _lc_tool(func)
+    func.as_tool = lc_tool  # type: ignore[attr-defined]
+    func.name = lc_tool.name  # type: ignore[attr-defined]
+    return func
 
-    # Create the FunctionTool for agent use
-    tool = _function_tool(func)
 
-    # Create a wrapper that's callable but also acts as a FunctionTool
-    @wraps(func)
-    async def wrapper(*args, **kwargs):
-        return await func(*args, **kwargs)
-
-    # Copy FunctionTool attributes so it can be used as an agent tool
-    wrapper.__tool__ = tool
-    wrapper.name = getattr(tool, 'name', func.__name__)
-
-    # Make it usable in agent tools list by giving it the same interface
-    for attr in ['params_json_schema', 'on_invoke_tool', 'strict_json_schema']:
-        if hasattr(tool, attr):
-            setattr(wrapper, attr, getattr(tool, attr))
-
-    return wrapper
+__all__ = ["tool"]

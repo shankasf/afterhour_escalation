@@ -27,5 +27,6 @@ export default defineConfig({
   server: {
     port: 5180,
     host: '0.0.0.0',
+    allowedHosts: ['customer.amsterdamhostel.cloud', 'localhost'],
   },
 });

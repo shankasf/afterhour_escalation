@@ -14,6 +14,7 @@ import {
     Radio,
     Workflow,
     TestTube2,
+    DollarSign,
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -36,6 +37,7 @@ const navSections = [
         items: [
             { to: '/agent-observability', icon: Workflow, label: 'Observability' },
             { to: '/agent-evaluation', icon: TestTube2, label: 'Evaluation' },
+            { to: '/cost', icon: DollarSign, label: 'Cost' },
         ],
     },
     {

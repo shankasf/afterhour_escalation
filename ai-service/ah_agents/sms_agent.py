@@ -1,82 +1,70 @@
-"""SMS Agent - Generates SMS messages for escalation."""
+"""SMS Agent — façade that delegates to the SMS LangGraph sub-graph.
+
+The sub-graph caps the message at 160 chars and re-appends ``Reply ACK to accept.``
+so we trust its output and just emit the agent-tracking trace + logs.
+
+Public API preserved for routes/escalate.py:
+    - ``SmsAgent.generate_message(event_id, issue_description, received_at) -> dict``
+    - ``generate_sms(...)`` module function
+"""
+
+from __future__ import annotations
 
 import logging
-from datetime import datetime
 
 from pydantic import BaseModel, Field
-from agents import Agent, Runner
+
 from services.agent_tracking import isoformat, publish_agent_trace, utc_now
+
+# Sub-graph contract owned by Agent 1.
+from graph.subgraphs import sms_graph
+from graph.callbacks import default_callbacks
 
 logger = logging.getLogger(__name__)
 
 
 class SmsOutput(BaseModel):
-    """Structured output for SMS generation."""
+    """Kept for any external consumer that still imports it."""
 
     message: str = Field(description="Final SMS text (<=160 chars), plain text")
 
 
-def create_sms_agent() -> Agent:
-    """Create the LLM agent that generates escalation SMS messages."""
-
-    return Agent(
-        name="SmsAgent",
-        model="gpt-5.2",
-        output_type=SmsOutput,
-        instructions="""Generate concise SMS alerts for after-hours emergencies.
-
-REQUIREMENTS:
-- Under 160 characters
-- Start with 'After-Hours Emergency'
-- Include time received and brief issue
-- End with 'Reply ACK to accept.'
-- No emojis
-- Return a JSON object with a single field: message""",
-    )
-
-
-# Singleton instance (module-level)
-sms_agent = create_sms_agent()
-
-
-# Backward-compatible alias
-get_sms_agent = create_sms_agent
-
-
 async def generate_sms(event_id: str, issue_description: str, received_at: str = "") -> dict:
-    """Generate an SMS message for escalation."""
+    """Generate an SMS message for escalation.
+
+    Delegates to ``sms_graph``. The keyword/template fallback that used to live
+    here is dropped — the sub-graph returns a safe default message on LLM failure.
+    """
+
     started_at = utc_now()
     logger.info("=" * 60)
     logger.info("[SMS AGENT] Generating SMS message")
     logger.info(f"  Event ID: {event_id}")
-    logger.info(f"  Issue: {issue_description[:60]}..." if len(issue_description) > 60 else f"  Issue: {issue_description}")
-
-    time_str = _parse_time(received_at)
+    logger.info(
+        f"  Issue: {issue_description[:60]}..."
+        if len(issue_description or "") > 60
+        else f"  Issue: {issue_description}"
+    )
 
     try:
-        prompt = (
-            f"Generate SMS for after-hours emergency:\n"
-            f"Issue: {issue_description}\n"
-            f"Time: {time_str}\n\n"
-            "Start with 'After-Hours Emergency', end with 'Reply ACK to accept.'"
+        result = await sms_graph.ainvoke(
+            {
+                "event_id": event_id,
+                "issue_description": issue_description,
+                "received_at": received_at,
+            },
+            config={
+                "callbacks": default_callbacks(),
+                "tags": ["sms_message", "after-hours-agent", "sms"],
+                "metadata": {"event_id": event_id},
+                "run_name": "sms_message",
+            },
         )
-        result = await Runner.run(sms_agent, prompt)
-        output: SmsOutput = result.final_output
-        message = (output.message or "").strip()
 
-        # Normalize ACK instruction: strip any existing variant, then re-append canonically
-        # so length-truncation never cuts the call-to-action.
-        suffix = " Reply ACK to accept."
-        idx = message.lower().rfind("reply ack")
-        if idx >= 0:
-            message = message[:idx].rstrip(". -")
+        message = result["message"]
+        generated_by = result.get("generated_by", "ai")
 
-        if len(message) + len(suffix) > 160:
-            room = 160 - len(suffix)
-            message = message[: max(0, room)].rstrip(". -")
-        message = (message + suffix).strip()
-
-        logger.info(f"[SMS AGENT] AI Generated message:")
+        logger.info("[SMS AGENT] Generated message:")
         logger.info(f"  {message}")
         logger.info("=" * 60)
 
@@ -106,13 +94,13 @@ async def generate_sms(event_id: str, issue_description: str, received_at: str =
                         "runType": "llm",
                         "status": "success",
                         "inputs": {"issue_description": issue_description},
-                        "outputs": {"length": len(message), "generated_by": "ai"},
+                        "outputs": {"length": len(message), "generated_by": generated_by},
                     }
                 ],
             }
         )
 
-        return {"message": message, "generated_by": "ai"}
+        return {"message": message, "generated_by": generated_by}
     except Exception as e:
         logger.error(f"[SMS AGENT] Message generation failed: {e}")
         await publish_agent_trace(
@@ -131,15 +119,14 @@ async def generate_sms(event_id: str, issue_description: str, received_at: str =
                     "thread_id": event_id,
                     "session_id": event_id,
                     "agent": "SmsAgent",
-                    "fallback": "template",
                 },
-                "tags": ["production", "after-hours-agent", "sms", "fallback"],
+                "tags": ["production", "after-hours-agent", "sms", "error"],
                 "startedAt": isoformat(started_at),
                 "endedAt": isoformat(utc_now()),
                 "spans": [
                     {
-                        "spanId": f"sms_message_{event_id}_fallback",
-                        "name": "sms_message_fallback",
+                        "spanId": f"sms_message_{event_id}_error",
+                        "name": "sms_message_generation",
                         "runType": "llm",
                         "status": "error",
                         "inputs": {"issue_description": issue_description},
@@ -148,29 +135,13 @@ async def generate_sms(event_id: str, issue_description: str, received_at: str =
                 ],
             }
         )
-        return {"message": _template_message(issue_description, time_str), "generated_by": "template"}
+        raise
 
 
-def _parse_time(received_at: str) -> str:
-    """Parse timestamp to readable time string."""
-    try:
-        if received_at:
-            dt = datetime.fromisoformat(received_at.replace("Z", "+00:00"))
-            return dt.strftime("%I:%M %p")
-    except Exception:
-        pass
-    return datetime.now().strftime("%I:%M %p")
-
-
-def _template_message(issue: str, time_str: str) -> str:
-    """Generate template-based fallback message."""
-    short = issue[:60] if issue else "service request"
-    return f"After-Hours Emergency - {short} received at {time_str}. Reply ACK to accept."
-
-
-# Wrapper class for backward compatibility
 class SmsAgent:
-    """Wrapper for backward compatibility."""
+    """Backward-compatible wrapper used by routes/escalate.py."""
 
-    async def generate_message(self, event_id: str, issue_description: str, received_at: str = "") -> dict:
+    async def generate_message(
+        self, event_id: str, issue_description: str, received_at: str = ""
+    ) -> dict:
         return await generate_sms(event_id, issue_description, received_at)

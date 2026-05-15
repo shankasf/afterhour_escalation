@@ -90,4 +90,38 @@ export class UsersService {
       data: { isActive: false },
     });
   }
+
+  async setOnDuty(id: string, onDuty: boolean): Promise<Omit<User, 'passwordHash'>> {
+    const user = await this.prisma.user.update({
+      where: { id },
+      data: { onDuty },
+    });
+    const { passwordHash, ...result } = user;
+    return result;
+  }
+
+  async setOnDutyPriority(id: string, priority: number): Promise<Omit<User, 'passwordHash'>> {
+    const user = await this.prisma.user.update({
+      where: { id },
+      data: { onDutyPriority: priority },
+    });
+    const { passwordHash, ...result } = user;
+    return result;
+  }
+
+  /**
+   * Return all eligible staff (on_call + admin) for the Rotation page,
+   * ordered by onDutyPriority. Used by the admin UI to render the
+   * on-duty toggle list.
+   */
+  async findRotationCandidates(): Promise<Omit<User, 'passwordHash'>[]> {
+    const users = await this.prisma.user.findMany({
+      where: {
+        isActive: true,
+        role: { in: [UserRole.on_call, UserRole.admin] },
+      },
+      orderBy: [{ onDutyPriority: 'asc' }, { name: 'asc' }],
+    });
+    return users.map(({ passwordHash, ...rest }) => rest);
+  }
 }

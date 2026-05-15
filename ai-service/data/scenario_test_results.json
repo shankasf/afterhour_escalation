@@ -1,0 +1,310 @@
+{
+  "results": [
+    {
+      "name": "fire_alarm_critical",
+      "turns": 2,
+      "duration_ms": 14418,
+      "bot_replies": [
+        "If there is smoke or fire, please call 911 and evacuate immediately. What is your name, callback number, and unit number (if any)? Are you and others safely outside?",
+        "Got it, our on-call team has been paged. If you haven\u2019t already, call 911 now, evacuate using stairs only, and stay away from the elevator."
+      ],
+      "triage": {
+        "decision": "escalate",
+        "priority": "critical",
+        "emergency_score": 1.0,
+        "is_safety_critical": true,
+        "issue_summary": "Resident reports a fire alarm, smoke on the 3rd floor, and visible flames near the elevator.",
+        "location": "123 Main St, unit 3B / 3rd floor near elevator",
+        "equipment": "fire alarm, elevator"
+      },
+      "gate_status": "outreach",
+      "gate_reason": "",
+      "validation": {
+        "checks": [
+          [
+            "min_score",
+            "1.00 >= 0.85",
+            true
+          ],
+          [
+            "decision",
+            "escalate == escalate",
+            true
+          ],
+          [
+            "safety",
+            "True == True",
+            true
+          ]
+        ],
+        "pass": true
+      }
+    },
+    {
+      "name": "gas_leak_life_safety",
+      "turns": 2,
+      "duration_ms": 12391,
+      "bot_replies": [
+        "Please leave the basement/building now and avoid switches or flames. If you haven\u2019t already, call 911 or the gas utility. What is your name and callback number?",
+        "Got it, our on-call team has been paged. Leave the area immediately if you can, avoid switches/flames, and call 911 or the gas utility right now if not already done."
+      ],
+      "triage": {
+        "decision": "escalate",
+        "priority": "critical",
+        "emergency_score": 0.98,
+        "is_safety_critical": true,
+        "issue_summary": "Resident reports a strong gas smell and difficulty breathing in the basement near the boiler room at 555 Oak Ave.",
+        "location": "555 Oak Ave, basement near boiler room",
+        "equipment": "boiler room/gas system"
+      },
+      "gate_status": "outreach",
+      "gate_reason": "",
+      "validation": {
+        "checks": [
+          [
+            "min_score",
+            "0.98 >= 0.85",
+            true
+          ],
+          [
+            "decision",
+            "escalate == escalate",
+            true
+          ],
+          [
+            "safety",
+            "True == True",
+            true
+          ]
+        ],
+        "pass": true
+      }
+    },
+    {
+      "name": "water_flood_critical",
+      "turns": 2,
+      "duration_ms": 11884,
+      "bot_replies": [
+        "I\u2019m sorry\u2014that sounds urgent. Please provide your name, callback number, building address/name, and whether there are any safety concerns such as electrical hazards, ceiling collapse risk, or anyone injured.",
+        "Thanks, Sarah. What is the building address or building name for unit 4C?"
+      ],
+      "triage": {
+        "decision": "escalate",
+        "priority": "critical",
+        "emergency_score": 0.95,
+        "is_safety_critical": true,
+        "issue_summary": "Major water leak is rapidly flooding unit 4C from the unit above.",
+        "location": "unit 4C",
+        "equipment": "plumbing/ceiling"
+      },
+      "gate_status": "outreach",
+      "gate_reason": "",
+      "validation": {
+        "checks": [
+          [
+            "min_score",
+            "0.95 >= 0.75",
+            true
+          ],
+          [
+            "decision",
+            "escalate == escalate",
+            true
+          ]
+        ],
+        "pass": true
+      }
+    },
+    {
+      "name": "power_outage_high",
+      "turns": 2,
+      "duration_ms": 8532,
+      "bot_replies": [
+        "I\u2019m sorry to hear that. Please provide your name, callback number, building address/unit if applicable, and whether there are any immediate safety concerns such as trapped residents, medical equipment, smoke, or sparks.",
+        "Got it, our on-call team has been paged."
+      ],
+      "triage": {
+        "decision": "escalate",
+        "priority": "high",
+        "emergency_score": 0.78,
+        "is_safety_critical": false,
+        "issue_summary": "Complete power outage affecting all units at 200 Birch St started about 20 minutes ago.",
+        "location": "building 200 Birch St",
+        "equipment": "electrical power"
+      },
+      "gate_status": "outreach",
+      "gate_reason": "",
+      "validation": {
+        "checks": [
+          [
+            "min_score",
+            "0.78 >= 0.65",
+            true
+          ],
+          [
+            "decision",
+            "escalate == escalate",
+            true
+          ]
+        ],
+        "pass": true
+      }
+    },
+    {
+      "name": "elevator_entrapment",
+      "turns": 2,
+      "duration_ms": 9985,
+      "bot_replies": [
+        "I\u2019m sorry to hear that. Please call 911 immediately if anyone is injured, in distress, or there is any immediate danger. What is your name, callback number, and are there any safety concerns such as injuries, panic, or trouble breathing?",
+        "Got it, our on-call team has been paged. If the person\u2019s condition changes or there is any immediate danger, call 911."
+      ],
+      "triage": {
+        "decision": "escalate",
+        "priority": "critical",
+        "emergency_score": 0.95,
+        "is_safety_critical": true,
+        "issue_summary": "A person is trapped in the elevator at 200 Birch and calling for help.",
+        "location": "200 Birch lobby/elevator",
+        "equipment": "elevator"
+      },
+      "gate_status": "outreach",
+      "gate_reason": "",
+      "validation": {
+        "checks": [
+          [
+            "min_score",
+            "0.95 >= 0.85",
+            true
+          ],
+          [
+            "decision",
+            "escalate == escalate",
+            true
+          ],
+          [
+            "safety",
+            "True == True",
+            true
+          ]
+        ],
+        "pass": true
+      }
+    },
+    {
+      "name": "routine_light_bulb",
+      "turns": 2,
+      "duration_ms": 14279,
+      "bot_replies": [
+        "Thanks. I have the issue at the lobby of 123 Main: burned-out light bulb. Can I get your name and callback number, and confirm there are no immediate safety concerns?",
+        "Got it, our on-call team has been paged."
+      ],
+      "triage": {
+        "decision": "ignore",
+        "priority": "low",
+        "emergency_score": 0.2,
+        "is_safety_critical": false,
+        "issue_summary": "Burned-out light bulb in the main entrance lobby at 123 Main can wait until morning.",
+        "location": "123 Main, main entrance lobby",
+        "equipment": "lobby light bulb"
+      },
+      "gate_status": "closed",
+      "gate_reason": "Within after-hours window",
+      "validation": {
+        "checks": [
+          [
+            "max_score",
+            "0.20 <= 0.4",
+            true
+          ],
+          [
+            "decision_in",
+            "ignore in ['monitor', 'ignore', 'escalate']",
+            true
+          ]
+        ],
+        "pass": true
+      }
+    },
+    {
+      "name": "scheduled_maintenance_low",
+      "turns": 2,
+      "duration_ms": 12917,
+      "bot_replies": [
+        "I can take the request for the on-call/after-hours team. Please provide your name, callback number, building and unit, and let me know if there are any safety concerns or active HVAC issues right now.",
+        "Thanks, Lisa. Is this for the whole building at 300 Pine St, or a specific unit/area? Also, please confirm there are no safety concerns or active HVAC problems right now."
+      ],
+      "triage": {
+        "decision": "ignore",
+        "priority": "low",
+        "emergency_score": 0.1,
+        "is_safety_critical": false,
+        "issue_summary": "Building manager wants to schedule an after-hours HVAC maintenance window next month at 300 Pine St.",
+        "location": "300 Pine St",
+        "equipment": "HVAC"
+      },
+      "gate_status": "closed",
+      "gate_reason": "Within after-hours window",
+      "validation": {
+        "checks": [
+          [
+            "max_score",
+            "0.10 <= 0.45",
+            true
+          ],
+          [
+            "decision_in",
+            "ignore in ['monitor', 'ignore', 'escalate']",
+            true
+          ]
+        ],
+        "pass": true
+      }
+    },
+    {
+      "name": "ambiguous_to_real_emergency",
+      "turns": 4,
+      "duration_ms": 17963,
+      "bot_replies": [
+        "Yes, I\u2019m here. Please provide your name, callback number, building/unit, the issue you\u2019re reporting, and whether there are any immediate safety concerns.",
+        "I can help determine that. What\u2019s your name, callback number, building/unit, and what\u2019s happening? Also, is anyone in immediate danger or is there active flooding, fire, no heat in extreme cold, or a security issue?",
+        "Please leave the unit if you see smoke, smell burning, or feel unsafe, and call 911. What is your name, callback number, and building/unit? Also, is there active smoke or fire right now?",
+        "Got it, our on-call team has been paged. If you feel unsafe, see smoke, or smell burning, leave the unit immediately and call 911."
+      ],
+      "triage": {
+        "decision": "escalate",
+        "priority": "critical",
+        "emergency_score": 0.95,
+        "is_safety_critical": true,
+        "issue_summary": "Water is coming through the ceiling in unit 6A and has reached outlets, with the smoke alarm activated and concern for electrical fire.",
+        "location": "unit 6A, 400 Cedar Lane",
+        "equipment": "smoke alarm, electrical outlets"
+      },
+      "gate_status": "outreach",
+      "gate_reason": "",
+      "validation": {
+        "checks": [
+          [
+            "min_score",
+            "0.95 >= 0.6",
+            true
+          ],
+          [
+            "decision",
+            "escalate == escalate",
+            true
+          ]
+        ],
+        "pass": true
+      }
+    }
+  ],
+  "summary": {
+    "passed": 8,
+    "total": 8,
+    "total_ms": 104153,
+    "llm_calls": 0,
+    "tokens_in": 0,
+    "tokens_out": 0,
+    "total_cost_usd": 0
+  }
+}

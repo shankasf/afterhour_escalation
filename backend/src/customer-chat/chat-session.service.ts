@@ -1,6 +1,12 @@
 import { randomUUID } from 'crypto';
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { ChatModality, ChatRole, ChatSessionStatus } from '@prisma/client';
+import {
+  ChatModality,
+  ChatRole,
+  ChatSessionStatus,
+  EventSource,
+  EventStatus,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 interface CreateSessionInput {
@@ -112,5 +118,63 @@ export class ChatSessionService {
       },
     });
     this.logger.log(`markConverted token=${sessionToken} event=${eventId}`);
+  }
+
+  /**
+   * Ensure an Event row exists for this chat session, creating one on first
+   * customer message. Returns the Event id so callers can pass it to the AI
+   * service in place of the legacy `chat-<sessionToken>` placeholder.
+   *
+   * Idempotent: returns the existing event id if the session is already
+   * linked.
+   */
+  async ensureEventForSession(
+    sessionToken: string,
+    firstMessage: string,
+  ): Promise<string | null> {
+    const session = await this.prisma.chatSession.findUnique({
+      where: { sessionToken },
+      select: {
+        id: true,
+        eventId: true,
+        customerName: true,
+        customerEmail: true,
+        customerPhone: true,
+        startedAt: true,
+      },
+    });
+    if (!session) return null;
+    if (session.eventId) return session.eventId;
+
+    const trimmed = (firstMessage || '').trim();
+    if (!trimmed) return null;
+
+    const senderLabel = session.customerName || session.customerEmail || 'anonymous';
+    const subject = `Chat from ${senderLabel}`.slice(0, 500);
+
+    const event = await this.prisma.event.create({
+      data: {
+        source: EventSource.chat,
+        subject,
+        body: trimmed,
+        senderEmail: session.customerEmail || undefined,
+        senderPhone: session.customerPhone || undefined,
+        receivedAt: session.startedAt,
+        status: EventStatus.pending,
+      },
+    });
+
+    await this.prisma.chatSession.update({
+      where: { id: session.id },
+      data: {
+        eventId: event.id,
+        status: ChatSessionStatus.converted,
+      },
+    });
+
+    this.logger.log(
+      `ensureEventForSession token=${sessionToken} event=${event.id}`,
+    );
+    return event.id;
   }
 }

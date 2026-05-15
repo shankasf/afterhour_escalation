@@ -18,6 +18,7 @@ export interface AppConfig {
   jwtSecret: string;
   jwtExpiresIn: string;
   internalApiKey: string;
+  staffDefaultPassword: string;
 
   // Database
   databaseUrl: string;
@@ -81,6 +82,7 @@ export class AppConfigService implements OnModuleInit {
       frontendUrl: this.env('FRONTEND_URL', 'http://localhost:3000'),
 
       jwtSecret: this.envRequired('JWT_SECRET'),
+      staffDefaultPassword: this.configService.get('STAFF_DEFAULT_PASSWORD') ?? '',
       jwtExpiresIn: this.env('JWT_EXPIRES_IN', '24h'),
       internalApiKey: this.envRequired('INTERNAL_API_KEY'),
 

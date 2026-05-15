@@ -6,6 +6,16 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Seeding database...');
 
+  // Shared password for all seeded on-call staff. Read from env so the
+  // bootstrap secret never lives in source control.
+  const STAFF_PASSWORD = process.env.STAFF_DEFAULT_PASSWORD;
+  if (!STAFF_PASSWORD) {
+    throw new Error(
+      'STAFF_DEFAULT_PASSWORD is not set — refusing to seed staff without login credentials.',
+    );
+  }
+  const staffHash = await bcrypt.hash(STAFF_PASSWORD, 10);
+
   // Create admin user
   const adminPassword = await bcrypt.hash('Admin@123', 10);
   const admin = await prisma.user.upsert({
@@ -22,28 +32,37 @@ async function main() {
   });
   console.log('✅ Created admin user:', admin.email);
 
-  // Create on-call staff (Jordan and Christina for rotation)
+  // Create on-call staff (Jordan and Christina, kept for historical
+  // rotation data). They share STAFF_DEFAULT_PASSWORD so admins can hand
+  // out credentials uniformly. Treat as bootstrap creds — change them
+  // immediately in production.
   const jordan = await prisma.user.upsert({
     where: { email: 'jordan@company.com' },
-    update: {},
+    update: { passwordHash: staffHash },
     create: {
       name: 'Jordan',
       email: 'jordan@company.com',
+      passwordHash: staffHash,
       phoneNumber: '+1111111111',
       role: UserRole.on_call,
       isActive: true,
+      onDuty: true,
+      onDutyPriority: 1,
     },
   });
 
   const christina = await prisma.user.upsert({
     where: { email: 'christina@company.com' },
-    update: {},
+    update: { passwordHash: staffHash },
     create: {
       name: 'Christina',
       email: 'christina@company.com',
+      passwordHash: staffHash,
       phoneNumber: '+1222222222',
       role: UserRole.on_call,
       isActive: true,
+      onDuty: true,
+      onDutyPriority: 2,
     },
   });
   console.log('✅ Created on-call staff: Jordan, Christina');
@@ -61,13 +80,16 @@ async function main() {
   for (const contact of fixedContacts) {
     const user = await prisma.user.upsert({
       where: { email: contact.email },
-      update: {},
+      update: { passwordHash: staffHash },
       create: {
         name: contact.name,
         email: contact.email,
+        passwordHash: staffHash,
         phoneNumber: contact.phone,
         role: UserRole.on_call,
         isActive: true,
+        onDuty: true,
+        onDutyPriority: contact.position,
       },
     });
 

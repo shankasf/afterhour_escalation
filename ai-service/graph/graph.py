@@ -7,6 +7,8 @@ from typing import Optional
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.graph import END, START, StateGraph
+from psycopg.rows import dict_row
+from psycopg_pool import AsyncConnectionPool
 
 from graph.state import IncidentState
 from graph.nodes import (
@@ -117,30 +119,46 @@ def build_graph(checkpointer):
 
 
 _compiled = None
-_checkpointer_cm = None
+_pool: AsyncConnectionPool | None = None
 _checkpointer = None
 
 
 async def init_graph() -> None:
     """Initialize the LangGraph checkpointer + compiled graph for the FastAPI lifespan.
 
+    Uses an AsyncConnectionPool so dropped Postgres connections are transparently
+    replaced — a single long-lived AsyncConnection (the from_conn_string default)
+    silently dies on idle/keepalive timeouts and breaks every subsequent graph call.
+
     Idempotent: subsequent calls return immediately.
     """
-    global _compiled, _checkpointer_cm, _checkpointer
+    global _compiled, _pool, _checkpointer
     if _compiled is not None:
         return
 
     db_url = os.environ.get("DATABASE_URL")
     if db_url:
-        cm = AsyncPostgresSaver.from_conn_string(db_url)
-        checkpointer = await cm.__aenter__()
+        pool = AsyncConnectionPool(
+            conninfo=db_url,
+            min_size=1,
+            max_size=20,
+            max_idle=300,
+            kwargs={
+                "autocommit": True,
+                "prepare_threshold": 0,
+                "row_factory": dict_row,
+            },
+            open=False,
+        )
+        await pool.open(wait=True)
+        checkpointer = AsyncPostgresSaver(pool)
         try:
             await checkpointer.setup()
         except Exception as exc:
             logger.warning("AsyncPostgresSaver.setup() failed (may already exist): %s", exc)
-        _checkpointer_cm = cm
+        _pool = pool
         _checkpointer = checkpointer
-        logger.info("LangGraph checkpointer: AsyncPostgresSaver")
+        logger.info("LangGraph checkpointer: AsyncPostgresSaver(pool min=1 max=20)")
     else:
         _checkpointer = MemorySaver()
         logger.warning("DATABASE_URL not set; using in-memory checkpointer (state lost on restart)")
@@ -149,14 +167,14 @@ async def init_graph() -> None:
 
 
 async def close_graph() -> None:
-    """Tear down the checkpointer connection on shutdown."""
-    global _compiled, _checkpointer_cm, _checkpointer
-    if _checkpointer_cm is not None:
+    """Tear down the checkpointer connection pool on shutdown."""
+    global _compiled, _pool, _checkpointer
+    if _pool is not None:
         try:
-            await _checkpointer_cm.__aexit__(None, None, None)
+            await _pool.close()
         except Exception as exc:
-            logger.warning("Error closing checkpointer: %s", exc)
-        _checkpointer_cm = None
+            logger.warning("Error closing checkpointer pool: %s", exc)
+        _pool = None
     _checkpointer = None
     _compiled = None
 

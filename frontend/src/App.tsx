@@ -14,6 +14,7 @@ import Alerts from './pages/Alerts'
 import Settings from './pages/Settings'
 import Metrics from './pages/Metrics'
 import AgentTrackingDashboard from './pages/AgentTrackingDashboard'
+import Cost from './pages/Cost'
 import Live from './pages/Live'
 import TechHome from './pages/TechHome'
 import Incidents from './pages/Incidents'
@@ -95,6 +96,7 @@ function AdminApp() {
                                     element={<AgentTrackingDashboard defaultTab="evaluation" lockedTab="evaluation" />}
                                 />
                                 <Route path="/live" element={<Live />} />
+                                <Route path="/cost" element={<Cost />} />
                                 <Route path="/settings" element={<Settings />} />
                             </Routes>
                         </Layout>

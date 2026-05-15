@@ -162,6 +162,13 @@ function formatNumber(value: number) {
     return new Intl.NumberFormat('en-US').format(Math.round(value));
 }
 
+function formatLatencyMinutes(minutes: number) {
+    if (!Number.isFinite(minutes) || minutes <= 0) return '0ms';
+    if (minutes < 1) return `${Math.round(minutes * 60000)}ms`;
+    if (minutes < 60) return `${Math.round(minutes * 10) / 10}m`;
+    return `${Math.round((minutes / 60) * 10) / 10}h`;
+}
+
 function clamp(value: number, min = 0, max = 100) {
     return Math.min(max, Math.max(min, value));
 }
@@ -391,7 +398,7 @@ function TraceTimeline({ selectedTrace }: { selectedTrace?: TraceRow }) {
                 </div>
                 <div className="rounded-lg bg-gray-50 border border-gray-100 p-3">
                     <p className="text-xs text-gray-500">Latency</p>
-                    <p className="mt-1 font-semibold text-gray-900">{selectedTrace?.latencyMinutes || 0} min</p>
+                    <p className="mt-1 font-semibold text-gray-900">{formatLatencyMinutes(selectedTrace?.latencyMinutes || 0)}</p>
                 </div>
                 <div className="rounded-lg bg-gray-50 border border-gray-100 p-3">
                     <p className="text-xs text-gray-500">Evaluator score</p>
@@ -464,7 +471,7 @@ function RecentTraceTable({
                                         </span>
                                     </td>
                                     <td className="py-3 pr-4 text-sm text-gray-700">{trace.runCount}</td>
-                                    <td className="py-3 pr-4 text-sm text-gray-700">{trace.latencyMinutes}m</td>
+                                    <td className="py-3 pr-4 text-sm text-gray-700">{formatLatencyMinutes(trace.latencyMinutes)}</td>
                                     <td className="py-3 pr-4">
                                         <div className="flex flex-wrap gap-1">
                                             {trace.tags.slice(0, 3).map((tag) => (
@@ -765,7 +772,7 @@ export default function AgentTrackingDashboard({
                 />
                 <StatCard
                     title="P95 Latency"
-                    value={`${metrics.responseTimeMetrics.p95ResponseTimeMinutes}m`}
+                    value={formatLatencyMinutes(metrics.responseTimeMetrics.p95ResponseTimeMinutes)}
                     detail={`${formatPercent(metrics.responseTimeMetrics.slaComplianceRate)} SLA pass`}
                     icon={Clock}
                     tone="bg-amber-50 text-amber-700"

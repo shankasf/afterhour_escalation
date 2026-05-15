@@ -19,6 +19,52 @@ logger = logging.getLogger(__name__)
 
 REALTIME_URL = "wss://api.openai.com/v1/realtime?model=gpt-realtime"
 
+# Default transcription model. Overridable via OPENAI_TRANSCRIPTION_MODEL so we
+# can swap in newer transcribers without a code change. Current best-in-class.
+DEFAULT_TRANSCRIPTION_MODEL = "gpt-4o-transcribe"
+
+
+def _load_ice_servers() -> list[RTCIceServer]:
+    """Build the RTCIceServer list.
+
+    Env var ``ICE_SERVERS_JSON`` (a JSON array of ``{urls, username?, credential?}``
+    objects) takes precedence, allowing the deploy to inject TURN endpoints
+    without code changes. Falls back to STUN-only Google default.
+
+    TODO: expose an ephemeral TURN credential REST endpoint so the browser
+    fetches short-lived TURN creds rather than relying on long-lived secrets
+    injected via env. See RFC 7635 / coturn's REST API.
+    """
+    raw = os.environ.get("ICE_SERVERS_JSON")
+    if raw:
+        try:
+            entries = json.loads(raw)
+            servers: list[RTCIceServer] = []
+            for entry in entries:
+                urls = entry.get("urls")
+                if not urls:
+                    continue
+                servers.append(RTCIceServer(
+                    urls=urls,
+                    username=entry.get("username"),
+                    credential=entry.get("credential"),
+                ))
+            if servers:
+                return servers
+        except (ValueError, TypeError, AttributeError) as exc:
+            logger.warning("Invalid ICE_SERVERS_JSON, falling back to default: %s", exc)
+
+    servers = [RTCIceServer(urls=["stun:stun.l.google.com:19302"])]
+    # Legacy TURN_HOST env path kept for backwards compatibility.
+    turn_host = os.environ.get("TURN_HOST")
+    if turn_host:
+        servers.append(RTCIceServer(
+            urls=[f"turn:{turn_host}"],
+            username=os.environ.get("TURN_USER", ""),
+            credential=os.environ.get("TURN_PASSWORD", ""),
+        ))
+    return servers
+
 
 class _OutgoingAudioTrack(MediaStreamTrack):
     kind = "audio"
@@ -66,12 +112,7 @@ class MediaSession:
         self.transcript_buffer: list[dict] = []
 
     async def start_with_offer(self, sdp_offer: str) -> str:
-        ice_servers = [RTCIceServer(urls=["stun:stun.l.google.com:19302"])]
-        turn_host = os.environ.get("TURN_HOST")
-        if turn_host:
-            ice_servers.append(RTCIceServer(urls=[f"turn:{turn_host}"],
-                                            username=os.environ.get("TURN_USER", ""),
-                                            credential=os.environ.get("TURN_PASSWORD", "")))
+        ice_servers = _load_ice_servers()
         self.pc = RTCPeerConnection(RTCConfiguration(iceServers=ice_servers))
         self.pc.addTransceiver("audio", direction="sendrecv")
         self.pc.addTrack(self._out_track)
@@ -83,12 +124,20 @@ class MediaSession:
             else:
                 MediaBlackhole().addTrack(track)
 
-        await self.pc.setRemoteDescription(RTCSessionDescription(sdp=sdp_offer, type="offer"))
+        try:
+            await self.pc.setRemoteDescription(RTCSessionDescription(sdp=sdp_offer, type="offer"))
+            await self._open_realtime()
+            answer = await self.pc.createAnswer()
+            await self.pc.setLocalDescription(answer)
+        except Exception:
+            # Make sure the PC and (possibly) the OpenAI WS are cleaned up
+            # before bubbling. Caller will still see the original exception.
+            try:
+                await self.close()
+            except Exception as close_exc:
+                logger.warning("close() during start_with_offer error path failed: %s", close_exc)
+            raise
 
-        await self._open_realtime()
-
-        answer = await self.pc.createAnswer()
-        await self.pc.setLocalDescription(answer)
         self._tasks.append(asyncio.create_task(self._pump_realtime()))
         return self.pc.localDescription.sdp
 
@@ -103,7 +152,9 @@ class MediaSession:
                 "voice": os.environ.get("OPENAI_VOICE_NAME", "alloy"),
                 "input_audio_format": "pcm16",
                 "output_audio_format": "pcm16",
-                "input_audio_transcription": {"model": "whisper-1"},
+                "input_audio_transcription": {
+                    "model": os.environ.get("OPENAI_TRANSCRIPTION_MODEL", DEFAULT_TRANSCRIPTION_MODEL),
+                },
                 "turn_detection": {"type": "server_vad"},
                 "tools": self.tools,
             },
@@ -157,9 +208,24 @@ class MediaSession:
         return await self.tool_dispatch(name, args)
 
     async def close(self) -> None:
+        # Idempotent: callable from error paths where setup only partially ran.
         for t in self._tasks:
-            t.cancel()
-        if self.ws:
-            await self.ws.close()
-        if self.pc:
-            await self.pc.close()
+            try:
+                t.cancel()
+            except Exception:
+                pass
+        self._tasks = []
+        if self.ws is not None:
+            try:
+                await self.ws.close()
+            except Exception as exc:
+                logger.warning("Realtime WS close failed: %s", exc)
+            finally:
+                self.ws = None
+        if self.pc is not None:
+            try:
+                await self.pc.close()
+            except Exception as exc:
+                logger.warning("RTCPeerConnection close failed: %s", exc)
+            finally:
+                self.pc = None

@@ -1,3 +1,12 @@
+"""Acknowledgment monitor — backend-only wrapper used by FastAPI routes.
+
+The SDK ``Agent()`` factory that used to live here has been removed; this
+module just exposes the ``AckMonitorAgent`` class which calls query/tool
+functions directly.
+"""
+
+from __future__ import annotations
+
 import logging
 from typing import Any, Dict, Optional
 
@@ -10,39 +19,6 @@ from ah_agents.queries.acknowledgment import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-def create_acknowledgment_ops_agent():
-    """Create the ops agent that processes acknowledgments via backend tools."""
-
-    try:  # pragma: no cover
-        from agents import Agent
-    except Exception:  # pragma: no cover
-        return None
-
-    return Agent(
-        name="AcknowledgmentOpsAgent",
-        instructions=(
-            "You process acknowledgments for after-hours escalations. "
-            "Use tools to detect ACK intent, locate the responsible user and active escalation, "
-            "then record the internal acknowledgment."
-        ),
-        tools=[
-            is_ack_message,
-            lookup_user_by_phone,
-            find_active_escalation_for_user,
-            record_internal_ack,
-            downgrade_latest_owned_event,
-        ],
-    )
-
-
-# Singleton instance (module-level)
-acknowledgment_ops_agent = create_acknowledgment_ops_agent()
-
-
-# Backward-compatible alias
-get_acknowledgment_ops_agent = create_acknowledgment_ops_agent
 
 
 class AckMonitorAgent:

@@ -95,7 +95,11 @@ export class CustomerChatController {
     });
 
     if (role === ChatRole.customer) {
-      await this.notifyAiService(sessionToken, body.text);
+      const eventId = await this.chatSessions.ensureEventForSession(
+        sessionToken,
+        body.text,
+      );
+      await this.notifyAiService(sessionToken, body.text, eventId);
     }
     return { ok: true };
   }
@@ -115,6 +119,7 @@ export class CustomerChatController {
   private async notifyAiService(
     sessionToken: string,
     text: string,
+    eventId: string | null,
   ): Promise<void> {
     const aiBase = this.configService.get<string>('AI_SERVICE_URL');
     const internalKey = this.configService.get<string>('INTERNAL_API_KEY');
@@ -130,7 +135,7 @@ export class CustomerChatController {
         this.httpService.post(
           `${aiBase}/graph/event`,
           {
-            event_id: `chat-${sessionToken}`,
+            event_id: eventId ?? `chat-${sessionToken}`,
             channel_event: {
               kind: 'customer_chat_message',
               session_token: sessionToken,

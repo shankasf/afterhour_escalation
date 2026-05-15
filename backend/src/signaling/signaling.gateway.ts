@@ -17,12 +17,40 @@ import { PresenceService } from '../presence/presence.service';
 
 type CallIntent = 'accepted' | 'declined' | 'deferred' | 'hangup';
 
+// Compute the allowed origin list for the signaling namespace at module load
+// time. Mirrors the HTTP allowlist built in `main.ts` so an origin allowed for
+// REST is also allowed for the Socket.IO handshake.
+function buildAllowedOrigins(): string[] {
+  const defaultOrigins = [
+    'https://main.amsterdamhostel.cloud',
+    'https://customer.amsterdamhostel.cloud',
+    'https://admin.amsterdamhostel.cloud',
+    'https://technician.amsterdamhostel.cloud',
+  ];
+  const envOrigins = (process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const legacy = process.env.FRONTEND_URL || 'http://localhost:5175';
+  return Array.from(
+    new Set<string>([...defaultOrigins, ...envOrigins, legacy]),
+  );
+}
+
+const JWT_REVALIDATION_INTERVAL_MS = 5 * 60 * 1000; // 5 min
+
 /**
  * WebRTC signaling gateway. Carries SDP offers/answers, ICE candidates, and
  * call lifecycle events between clients. The server only forwards to ai-service
  * over HTTP — no media passes through here.
  */
-@WebSocketGateway({ namespace: '/signaling', cors: true })
+@WebSocketGateway({
+  namespace: '/signaling',
+  cors: {
+    origin: buildAllowedOrigins(),
+    credentials: true,
+  },
+})
 export class SignalingGateway
   implements OnGatewayConnection, OnGatewayDisconnect
 {
@@ -31,6 +59,7 @@ export class SignalingGateway
 
   private readonly logger = new Logger(SignalingGateway.name);
   private readonly socketUserMap = new Map<string, string>();
+  private readonly revalTimers = new Map<string, NodeJS.Timeout>();
 
   constructor(
     private readonly presence: PresenceService,
@@ -57,6 +86,36 @@ export class SignalingGateway
       this.socketUserMap.set(client.id, userId);
       this.presence.addSession(userId, client.id);
       client.join(`user:${userId}`);
+
+      // Cache the token on the socket and re-verify periodically. Chose
+      // periodic re-verify (over lazy-on-emit) because incoming_call is
+      // dispatched from the controller via room broadcast — there's no
+      // per-socket hook to intercept cheaply.
+      client.data = client.data || {};
+      client.data.token = token;
+      const timer = setInterval(() => {
+        const t = client.data?.token as string | undefined;
+        if (!t) {
+          client.disconnect(true);
+          return;
+        }
+        try {
+          this.jwtService.verify(t);
+        } catch (err) {
+          this.logger.warn(
+            `signaling token expired socket=${client.id} userId=${userId}: ${
+              err instanceof Error ? err.message : 'invalid'
+            }`,
+          );
+          client.disconnect(true);
+        }
+      }, JWT_REVALIDATION_INTERVAL_MS);
+      // `unref` so a hung interval doesn't keep the process alive at shutdown.
+      if (typeof (timer as any).unref === 'function') {
+        (timer as any).unref();
+      }
+      this.revalTimers.set(client.id, timer);
+
       this.logger.log(
         `signaling connect socket=${client.id} userId=${userId}`,
       );
@@ -73,6 +132,11 @@ export class SignalingGateway
     if (userId) {
       this.presence.removeSession(userId, client.id);
       this.socketUserMap.delete(client.id);
+    }
+    const timer = this.revalTimers.get(client.id);
+    if (timer) {
+      clearInterval(timer);
+      this.revalTimers.delete(client.id);
     }
     this.logger.log(`signaling disconnect socket=${client.id}`);
   }

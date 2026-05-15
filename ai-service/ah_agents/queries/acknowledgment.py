@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from config import get_settings
 from logging_setup import with_correlation_header
-from . import function_tool
+from . import tool
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -53,7 +53,7 @@ _ACK_PATTERNS = [
 ]
 
 
-@function_tool
+@tool
 async def is_ack_message(message: str) -> AckCheckOutput:
     """Detect whether an inbound SMS looks like an acknowledgment."""
     msg = (message or "").lower().strip()
@@ -67,7 +67,7 @@ async def is_ack_message(message: str) -> AckCheckOutput:
     return AckCheckOutput(is_ack=False)
 
 
-@function_tool
+@tool
 async def lookup_user_by_phone(phone_number: str) -> UserLookupOutput:
     """Look up a user in the backend by phone number."""
     try:
@@ -96,7 +96,7 @@ async def lookup_user_by_phone(phone_number: str) -> UserLookupOutput:
         return UserLookupOutput(found=False)
 
 
-@function_tool
+@tool
 async def find_active_escalation_for_user(user_id: str) -> ActiveEscalationLookupOutput:
     """Find the active escalation where the latest escalation log targets this user."""
     try:
@@ -130,7 +130,7 @@ async def find_active_escalation_for_user(user_id: str) -> ActiveEscalationLooku
         return ActiveEscalationLookupOutput(found=False)
 
 
-@function_tool
+@tool
 async def record_internal_ack(event_id: str, user_id: Optional[str], phone_number: Optional[str], method: str) -> ProcessAckOutput:
     """Record an internal acknowledgment in the backend."""
     try:
@@ -156,7 +156,7 @@ async def record_internal_ack(event_id: str, user_id: Optional[str], phone_numbe
         return ProcessAckOutput(success=False, event_id=event_id, user_id=user_id, error=str(e))
 
 
-@function_tool
+@tool
 async def downgrade_latest_owned_event(user_id: str, reason: str = "Downgraded via SMS by owner") -> ProcessAckOutput:
     """Downgrade the most recent acknowledged event for a user."""
     try:

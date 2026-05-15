@@ -1,3 +1,12 @@
+"""Escalation ops wrapper — backend-only.
+
+The SDK ``Agent()`` factory that used to live here has been removed; this
+module just exposes the ``EscalationAgent`` class which calls query/tool
+functions directly.
+"""
+
+from __future__ import annotations
+
 import logging
 from typing import Any, Dict, List
 
@@ -10,36 +19,6 @@ from ah_agents.queries.escalation import (
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
-
-
-def create_escalation_ops_agent():
-    """Create the ops agent that manages escalation backend operations."""
-
-    try:  # pragma: no cover
-        from agents import Agent
-    except Exception:  # pragma: no cover
-        logger.warning("Agents SDK unavailable; escalation ops agent disabled")
-        return None
-
-    logger.info("Creating EscalationOpsAgent")
-
-    return Agent(
-        name="EscalationOpsAgent",
-        instructions=(
-            "You manage escalation operations through backend APIs. "
-            "Use tools to fetch the escalation ladder and start escalations. "
-            "Never guess; rely on tool outputs."
-        ),
-        tools=[get_escalation_ladder, start_escalation],
-    )
-
-
-# Singleton instance (module-level)
-escalation_ops_agent = create_escalation_ops_agent()
-
-
-# Backward-compatible alias
-get_escalation_ops_agent = create_escalation_ops_agent
 
 
 class EscalationAgent:

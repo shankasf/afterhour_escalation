@@ -15,6 +15,7 @@ import { LadderBuilderService } from './services/ladder-builder.service';
 import { AcknowledgmentHandlerService } from './services/acknowledgment-handler.service';
 import { EscalationCoordinatorService } from './services/escalation-coordinator.service';
 import { LadderConfigService } from './services/ladder-config.service';
+import { AckTimeoutService } from './services/ack-timeout.service';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { LadderConfigService } from './services/ladder-config.service';
     LadderBuilderService,
     AcknowledgmentHandlerService,
     EscalationCoordinatorService,
+    AckTimeoutService,
     // Legacy service (maintained for backward compatibility)
     EscalationService,
   ],

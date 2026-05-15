@@ -20,10 +20,13 @@ import { EmailTrackingModule } from './email-tracking/email-tracking.module';
 import { AppConfigModule } from './common/config/app-config.module';
 import { LogsModule } from './logs/logs.module';
 import { PresenceModule } from './presence/presence.module';
+import { RedisModule } from './redis/redis.module';
 import { SignalingModule } from './signaling/signaling.module';
 import { CustomerChatModule } from './customer-chat/customer-chat.module';
 import { PushModule } from './push/push.module';
 import { AgentTrackingModule } from './agent-tracking/agent-tracking.module';
+import { EvalModule } from './eval/eval.module';
+import { CostModule } from './cost/cost.module';
 import { CorrelationIdMiddleware } from './common/logging/correlation-id.middleware';
 import { HttpLoggingMiddleware } from './common/logging/http-logging.middleware';
 
@@ -42,6 +45,7 @@ import { HttpLoggingMiddleware } from './common/logging/http-logging.middleware'
     ]),
     PrismaModule,
     AppConfigModule,
+    RedisModule,
     AuthModule,
     UsersModule,
     EventsModule,
@@ -61,6 +65,8 @@ import { HttpLoggingMiddleware } from './common/logging/http-logging.middleware'
     CustomerChatModule,
     PushModule,
     AgentTrackingModule,
+    EvalModule,
+    CostModule,
   ],
 })
 export class AppModule implements NestModule {

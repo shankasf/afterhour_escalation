@@ -122,6 +122,8 @@ model User {
   phoneNumber      String?   @map("phone_number") @db.VarChar(50)
   role             UserRole  @default(viewer)
   isActive         Boolean   @default(true) @map("is_active")
+  onDuty           Boolean   @default(false) @map("on_duty")
+  onDutyPriority   Int       @default(100) @map("on_duty_priority")
   unavailableUntil DateTime? @map("unavailable_until") @db.Timestamptz(6)
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -556,4 +558,35 @@ model PushSubscription {
   @@index([userId])
   @@index([customerSessionId])
   @@map("push_subscriptions")
+}
+
+// Per-LLM-call cost ledger. One row per ChatCompletion / Realtime audio
+// turn / direct OpenAI SDK call. Used by the admin Cost dashboard
+// (/cost) to display transparent per-call spend across agents, models,
+// and time windows.
+model LlmCostEvent {
+  id                  String   @id @default(uuid())
+  runId               String   @map("run_id") @db.VarChar(160)
+  rootRunId           String?  @map("root_run_id") @db.VarChar(160)
+  correlationId       String?  @map("correlation_id") @db.VarChar(160)
+  source              String   @default("langchain") @db.VarChar(40)
+  agent               String?  @db.VarChar(120)
+  model               String   @db.VarChar(120)
+  tokensIn            Int      @default(0) @map("tokens_in")
+  cachedTokens        Int      @default(0) @map("cached_tokens")
+  tokensOut           Int      @default(0) @map("tokens_out")
+  audioTokensIn       Int      @default(0) @map("audio_tokens_in")
+  audioCachedTokens   Int      @default(0) @map("audio_cached_tokens")
+  audioTokensOut      Int      @default(0) @map("audio_tokens_out")
+  costUsd             Decimal  @map("cost_usd") @db.Decimal(12, 8)
+  latencyMs           Int?     @map("latency_ms")
+  finishReason        String?  @map("finish_reason") @db.VarChar(40)
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([createdAt])
+  @@index([model, createdAt])
+  @@index([agent, createdAt])
+  @@index([rootRunId])
+  @@index([correlationId])
+  @@map("llm_cost_events")
 }

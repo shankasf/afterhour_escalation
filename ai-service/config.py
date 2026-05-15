@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     # OpenAI
     openai_api_key: str = ""
     # LLM used for text reasoning (Responses API)
-    openai_model: str = "gpt-5.2"
+    openai_model: str = "gpt-5.5"
     # Voice-capable model used for call audio generation
     openai_voice_model: str = "gpt-realtime-2025-08-28"
     # Voice name for audio rendering (model-dependent)

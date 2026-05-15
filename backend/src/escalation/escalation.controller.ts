@@ -5,13 +5,21 @@ import { EscalationService } from './escalation.service';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { UserRole } from '@prisma/client';
+import { AiServiceClient } from '../ai-service/ai-service.client';
+import { LadderBuilderService } from './services/ladder-builder.service';
+import { Req } from '@nestjs/common';
+import type { Request } from 'express';
 
 @ApiTags('escalation')
 @ApiBearerAuth()
 @Controller('escalation')
 @UseGuards(AuthGuard('jwt'))
 export class EscalationController {
-  constructor(private escalationService: EscalationService) {}
+  constructor(
+    private escalationService: EscalationService,
+    private aiServiceClient: AiServiceClient,
+    private ladderBuilder: LadderBuilderService,
+  ) {}
 
   @Get('active')
   @ApiOperation({ summary: 'Get all active escalations with live status' })
@@ -81,9 +89,11 @@ export class EscalationController {
   }
 
   @Get('ladder')
-  @ApiOperation({ summary: 'Get current escalation ladder' })
+  @ApiOperation({
+    summary: 'Get current escalation ladder (on-duty pool, ordered)',
+  })
   async getEscalationLadder(): Promise<any[]> {
-    return this.escalationService.buildEscalationLadder();
+    return this.ladderBuilder.buildLadder();
   }
 
   @Post('acknowledge')
@@ -97,5 +107,41 @@ export class EscalationController {
       body.method,
     );
     return { success: true };
+  }
+
+  @Post(':eventId/decline')
+  @ApiOperation({
+    summary: 'Staff explicitly declines the incoming call — advances ladder',
+  })
+  async decline(
+    @Param('eventId') eventId: string,
+    @Req() req: Request,
+  ): Promise<{ success: boolean }> {
+    const userId = (req.user as { id?: string } | undefined)?.id ?? 'unknown';
+    await this.aiServiceClient.postChannelEvent(eventId, {
+      type: 'decline',
+      text: `declined by user:${userId}`,
+      source: 'incoming-call-modal',
+    });
+    return { success: true };
+  }
+
+  @Post(':eventId/defer')
+  @ApiOperation({
+    summary: 'Staff defers the call (treated as a soft decline for routing)',
+  })
+  async defer(
+    @Param('eventId') eventId: string,
+    @Body() body: { minutes?: number },
+    @Req() req: Request,
+  ): Promise<{ success: boolean; defer_minutes: number }> {
+    const userId = (req.user as { id?: string } | undefined)?.id ?? 'unknown';
+    const minutes = Math.max(1, Math.min(60, Number(body?.minutes) || 5));
+    await this.aiServiceClient.postChannelEvent(eventId, {
+      type: 'decline',
+      text: `deferred ${minutes}min by user:${userId}`,
+      source: 'incoming-call-modal',
+    });
+    return { success: true, defer_minutes: minutes };
   }
 }
